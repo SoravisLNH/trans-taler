@@ -1,0 +1,2308 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trans-taler</title>
+<meta name="theme-color" content="#1b1236">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icon-32.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Trans-taler">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Mali:wght@400;500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: a sunny meadow world (forest, a cottage, a library). Tap the cottage to choose a level; the world dims and a periwinkle storybook rises in front of it. Each spread = one question: prompt on the left page, answer key on the right. Single bright theme by choice. */
+:root{
+  color-scheme: light;
+  --ink:#2a2358;
+  --ink-soft:#6f68a0;
+  --violet:#6d4fe0;
+  --pink:#ff6fae;
+  --mint:#2fbfa8;
+  --paper:#fffdf7;
+  --paper-2:#fbf3e6;
+  --holo:linear-gradient(115deg,#7ee8fa 0%,#9fb4ff 22%,#d3a6ff 42%,#ffa6d1 62%,#ffe29a 82%,#7ee8fa 100%);
+  --f-logo:"Fredoka","Mali",sans-serif;
+  --f-head:"Mali","Sarabun",sans-serif;
+  --f-body:"Sarabun","Mali",sans-serif;
+  --f-en:"Fredoka","Mali",sans-serif;
+  --pw:340px; --ph:600px;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:#170f33;color:var(--ink);font-family:var(--f-body);font-size:17px;line-height:1.65;overflow:hidden}
+h1,h2,h3{font-family:var(--f-head);font-weight:700;margin:0;text-wrap:balance}
+p{margin:0}
+button{font:inherit}
+button:focus-visible,textarea:focus-visible{outline:3px solid var(--pink);outline-offset:3px}
+
+/* ───── the round library (home), rendered in WebGL ───── */
+#room{position:fixed;inset:0;z-index:0;overflow:hidden;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;background:#1b1236}
+#room.dragging{cursor:grabbing}
+#room.pointing{cursor:pointer}
+#room canvas{display:block;width:100%;height:100%}
+.room-light{position:fixed;inset:0;z-index:1;pointer-events:none;background:radial-gradient(ellipse 80% 75% at 50% 50%,transparent 60%,rgba(12,6,30,.55))}
+.altar-label{position:fixed;left:50%;top:80%;z-index:3;transform:translate(-50%,-50%);border:0;cursor:pointer;white-space:nowrap;
+  font-family:var(--f-head);font-weight:700;font-size:15px;color:#4a2f08;padding:5px 16px;border-radius:999px;
+  background:linear-gradient(180deg,#fff3c4,#f0c860);box-shadow:0 0 0 2px #fff7d6,0 6px 18px rgba(255,200,90,.5);transition:transform .2s ease}
+.altar-label:hover{transform:translate(-50%,-62%)}
+.booktip{position:fixed;z-index:5;pointer-events:none;display:none;max-width:260px;padding:8px 12px;border-radius:14px;background:#fff;color:var(--ink);
+  font-family:var(--f-head);font-weight:700;font-size:14px;line-height:1.45;box-shadow:0 0 0 2px #ffe29a,0 10px 22px rgba(0,0,0,.35)}
+.booktip small{display:block;font-weight:600;font-size:12.5px;color:var(--ink-soft)}
+@keyframes bobs{50%{transform:translateY(-10px)}}
+.turn{position:fixed;top:42%;z-index:4;width:54px;height:54px;margin-top:-27px;border-radius:50%;border:0;cursor:pointer;display:grid;place-items:center;
+  font-size:20px;color:#5a3fd0;background:rgba(255,255,255,.88);box-shadow:0 0 0 3px rgba(255,236,170,.6),0 10px 22px rgba(0,0,0,.35)}
+.turn:hover{background:#fff}
+#turnL{left:14px}#turnR{right:14px}
+.btn.allbooks{position:fixed;top:14px;right:14px;z-index:4}
+.hint{position:fixed;left:50%;top:clamp(130px,22vh,190px);z-index:4;transform:translateX(-50%);pointer-events:none;white-space:nowrap;
+  font-family:var(--f-head);font-weight:700;font-size:15px;color:#fff;padding:7px 16px;border-radius:999px;background:rgba(20,12,45,.65);transition:opacity .6s ease}
+.hint.off{opacity:0}
+body.reading .turn,body.reading .allbooks,body.reading .altar-label,body.reading .hint,body.reading .booktip{display:none}
+
+/* mystery book: pick the level on its cover */
+.mcover{zoom:var(--fz,1);position:relative;width:min(430px,100%);max-height:calc(100% - 8px);overflow-y:auto;border-radius:6px 18px 18px 6px;padding:22px 20px 20px 40px;color:#fff;
+  background:radial-gradient(circle at 20% 8%,rgba(255,255,255,.18),transparent 40%),radial-gradient(circle,rgba(255,255,255,.12) 1px,transparent 1.5px) 0 0/16px 16px,linear-gradient(160deg,#4a35a8,#2a1d78 55%,#170f45);
+  box-shadow:inset -3px 0 6px rgba(0,0,0,.35),3px 3px 0 #fffaf0,6px 6px 0 #e6dcf0,9px 9px 0 #22175e,0 30px 60px rgba(0,0,0,.5);animation:pop .45s cubic-bezier(.3,1.5,.5,1) both}
+.mcover::before{content:"";position:absolute;left:0;top:0;bottom:0;width:24px;background:linear-gradient(90deg,rgba(0,0,0,.45),rgba(255,255,255,.12) 40%,rgba(0,0,0,.3) 70%,transparent)}
+.m-in{position:relative;border:2px solid #e9c46a;border-radius:14px;padding:16px 14px 14px;box-shadow:inset 0 0 0 4px rgba(0,0,0,0),inset 0 0 0 5px rgba(233,196,106,.4)}
+.m-top{text-align:center;font-family:var(--f-logo);font-weight:700;letter-spacing:.22em;font-size:12px;color:#e9c46a}
+.m-q{width:92px;height:92px;margin:4px auto 2px;display:grid;place-items:center;font-family:var(--f-logo);font-weight:700;font-size:64px;color:#ffe08a;
+  text-shadow:0 0 22px rgba(255,224,138,.9);border-radius:50%;background:radial-gradient(circle,rgba(255,224,138,.28),transparent 70%);animation:bobs 2.6s ease-in-out infinite}
+.mcover h2{text-align:center;color:#fff;font-size:clamp(22px,5vw,27px)}
+.m-sub{text-align:center;font-family:var(--f-head);font-weight:600;font-size:15px;color:#d9d0ff;margin-top:2px}
+.medals{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+.medal{position:relative;cursor:pointer;border:0;border-radius:16px;padding:9px 2px 8px;display:flex;flex-direction:column;align-items:center;line-height:1.25;
+  background:rgba(255,255,255,.08);box-shadow:inset 0 0 0 2px rgba(233,196,106,.55);transition:transform .15s ease}
+.medal:hover{transform:translateY(-2px)}
+.medal b{font-family:var(--f-logo);font-weight:700;font-size:23px;color:#ffe08a}
+.medal span{font-family:var(--f-head);font-weight:600;font-size:12px;color:#d9d0ff}
+.medal em{font-style:normal;font-family:var(--f-logo);font-weight:700;font-size:11px;margin-top:3px;padding:0 8px;border-radius:999px;color:#fff;background:rgba(255,255,255,.14)}
+.medal[aria-pressed="true"]{background:linear-gradient(160deg,#fff3c4,#e8b84e);box-shadow:0 0 0 3px #fff6d0,0 0 22px rgba(255,220,120,.75)}
+.medal[aria-pressed="true"] b,.medal[aria-pressed="true"] span,.medal[aria-pressed="true"] em{color:#4a2f08}
+.medal[aria-pressed="true"] em{background:rgba(255,255,255,.45)}
+.medal:disabled{opacity:.42;cursor:not-allowed;transform:none}
+.medal .soon{position:absolute;top:-8px;right:-2px;font-family:var(--f-head);font-weight:700;font-size:10px;color:#2a1d78;background:#cfc4ff;padding:0 7px;border-radius:999px}
+.m-likes{text-align:center;font-family:var(--f-head);font-weight:600;font-size:13.5px;line-height:1.6;color:#d9d0ff;margin-top:12px}
+.m-likes b{color:#ffe08a}
+.m-full{margin-top:12px;padding:8px 12px;border-radius:12px;text-align:center;font-family:var(--f-head);font-weight:700;font-size:14px;line-height:1.55;color:#4a2f08;background:#ffe9a8}
+.mcover .row{margin-top:14px}
+.mcover .fine{color:#b9aeea;text-align:center;margin-top:10px}
+.mcover .x{background:rgba(255,255,255,.15);color:#fff;z-index:2}
+
+.brand-top{position:fixed;top:14px;left:0;right:0;z-index:2;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none;padding:0 16px;text-align:center}
+.logo{font-family:var(--f-logo);font-weight:700;font-size:clamp(32px,7vw,46px);line-height:1;letter-spacing:.01em;color:#fff;
+  text-shadow:0 3px 0 #6d4fe0,0 6px 0 #4c33b8,0 12px 22px rgba(40,30,110,.35)}
+.logo span{color:#ffe36e}
+.tagline{font-family:var(--f-head);font-weight:700;font-size:16px;color:#4c33b8;background:#fff;padding:4px 16px;border-radius:999px;box-shadow:0 0 0 3px rgba(255,255,255,.55),0 6px 14px rgba(40,30,110,.18)}
+
+.toast{position:fixed;left:50%;bottom:24px;z-index:20;transform:translate(-50%,30px);opacity:0;transition:.35s ease;pointer-events:none;
+  font-family:var(--f-head);font-weight:700;font-size:15px;color:#fff;background:#6d4fe0;padding:10px 20px;border-radius:999px;box-shadow:0 10px 24px rgba(40,30,110,.35);max-width:calc(100% - 32px);text-align:center}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* buttons */
+.btn{position:relative;overflow:hidden;cursor:pointer;white-space:nowrap;border:0;border-radius:999px;padding:11px 26px;
+  font-family:var(--f-head);font-weight:700;font-size:17px;color:#fff;text-shadow:0 1px 1px rgba(60,30,150,.4);
+  background:linear-gradient(135deg,#ff7fb8,#9b7bff 58%,#5fa8ff);
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.5),inset 0 -3px 0 rgba(60,30,150,.2),0 0 0 3px #fff,0 0 0 4.5px rgba(155,123,255,.55),0 10px 22px rgba(120,90,230,.4);
+  transition:transform .18s ease}
+.btn::after{content:"";position:absolute;top:0;bottom:0;left:-60%;width:40%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);transform:skewX(-20deg);transition:left .6s ease}
+.btn:hover{transform:translateY(-2px)}
+.btn:hover::after{left:120%}
+.btn:active{transform:translateY(1px)}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.btn.small{font-size:14.5px;padding:7px 16px}
+.btn.chip{color:#5a3fd0;text-shadow:none;background:linear-gradient(180deg,#fff,#efe8ff);box-shadow:inset 0 -2px 0 rgba(155,123,255,.22),0 0 0 2px rgba(155,123,255,.6),0 6px 12px rgba(155,123,255,.18)}
+.btn.chip.mint{color:#14907d;background:linear-gradient(180deg,#fff,#dffaf4);box-shadow:inset 0 -2px 0 rgba(47,191,168,.25),0 0 0 2px rgba(47,191,168,.7),0 6px 12px rgba(47,191,168,.18)}
+.btn.cam{font-size:14.5px;padding:7px 16px;color:#5a3fd0;text-shadow:none;background:#fff;box-shadow:0 0 0 2px rgba(155,123,255,.5),0 6px 14px rgba(0,0,0,.15)}
+.btn.cam[aria-pressed="true"]{color:#fff;text-shadow:0 1px 1px rgba(60,30,150,.4);background:linear-gradient(135deg,#ff7fb8,#9b7bff 58%,#5fa8ff);box-shadow:0 0 0 2px #fff,0 0 0 3.5px rgba(155,123,255,.55)}
+
+/* ───── level modal ───── */
+#modal{position:fixed;inset:0;z-index:10;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(16,10,38,.55);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+#modal.on{display:flex;animation:fade .3s ease both}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.card{zoom:var(--fz,1);position:relative;width:100%;max-width:640px;max-height:calc(100% - 8px);overflow-y:auto;padding:26px 22px 22px;border-radius:30px;background:#fff;
+  box-shadow:0 0 0 4px #fff,0 0 0 8px rgba(155,123,255,.35),0 30px 60px rgba(30,40,80,.35);animation:pop .45s cubic-bezier(.3,1.5,.5,1) both}
+@keyframes pop{from{transform:translateY(30px) scale(.92);opacity:0}to{transform:none;opacity:1}}
+.card::before{content:"";position:absolute;left:30px;right:30px;top:0;height:5px;border-radius:0 0 5px 5px;background:var(--holo)}
+.card-head{display:flex;align-items:center;gap:12px}
+.card-head h2{font-size:clamp(22px,5vw,28px);color:var(--ink);line-height:1.35}
+.kicker{font-family:var(--f-logo);font-weight:700;letter-spacing:.12em;font-size:12.5px;color:#7a5ae0;text-transform:uppercase}
+.x{position:absolute;top:14px;right:14px;width:38px;height:38px;border-radius:50%;border:0;cursor:pointer;background:#f1ecff;color:#5a3fd0;font-size:20px;font-weight:700;line-height:1}
+.levels{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}
+.lv{position:relative;cursor:pointer;border:0;border-radius:20px;padding:12px 4px 10px;display:flex;flex-direction:column;align-items:center;line-height:1.3;
+  background:#fff;color:var(--c1);box-shadow:0 0 0 2.5px color-mix(in srgb,var(--c1) 50%,#fff),0 8px 16px color-mix(in srgb,var(--c1) 18%,transparent)}
+.lv b{font-family:var(--f-logo);font-weight:700;font-size:26px}
+.lv span{font-family:var(--f-head);font-weight:600;font-size:13px;color:var(--ink-soft)}
+.lv em{font-style:normal;font-family:var(--f-logo);font-size:12.5px;font-weight:700;margin-top:4px;padding:1px 9px;border-radius:999px;background:color-mix(in srgb,var(--c1) 14%,#fff)}
+.lv[aria-pressed="true"]{color:#fff;background:linear-gradient(160deg,var(--c2),var(--c1));box-shadow:0 0 0 3px #fff,0 0 0 5px var(--c1),0 12px 22px color-mix(in srgb,var(--c1) 40%,transparent);transform:translateY(-2px)}
+.lv[aria-pressed="true"] span{color:#fff}
+.lv[aria-pressed="true"] em{background:rgba(255,255,255,.3)}
+.lv:disabled{cursor:not-allowed;opacity:.5}
+.lv .soon{position:absolute;top:-9px;right:-2px;font-family:var(--f-head);font-size:10.5px;font-weight:700;color:#fff;background:#b4a9de;padding:0 8px;border-radius:999px}
+.desc{margin-top:16px;font-size:15px;color:var(--ink-soft)}
+.card .row{margin-top:16px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.row.end{justify-content:flex-end}.row.mid{justify-content:center}
+.fine{font-size:13px;line-height:1.55;color:var(--ink-soft)}
+
+/* ───── first-time profile (phase 2) ───── */
+#onboard{position:fixed;inset:0;z-index:11;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(16,10,38,.55);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+#onboard.on{display:flex;animation:fade .3s ease both}
+.steps{display:flex;gap:6px;justify-content:center;margin:2px 0 14px}
+.steps i{width:30px;height:7px;border-radius:7px;background:#e6e0f8}
+.steps i.on{background:linear-gradient(90deg,#ff7fb8,#9b7bff)}
+.ob-q{font-size:clamp(21px,5vw,27px);line-height:1.4;color:var(--ink)}
+.ob-sub{font-family:var(--f-head);font-weight:600;font-size:15px;color:var(--ink-soft);margin-top:4px}
+.field{width:100%;margin-top:14px;font-family:var(--f-head);font-weight:700;font-size:20px;padding:12px 16px;border-radius:16px;border:0;background:#f5f1ff;box-shadow:inset 0 0 0 2.5px #ddd0ff;color:var(--ink)}
+.field::placeholder{color:#b6abdc}
+.field:focus{outline:none;box-shadow:inset 0 0 0 3px #9b7bff}
+.chips{display:flex;flex-wrap:wrap;gap:9px;margin-top:14px}
+.pick{cursor:pointer;border:0;border-radius:999px;padding:7px 15px;font-family:var(--f-head);font-weight:700;font-size:15px;color:#5a3fd0;background:#fff;box-shadow:0 0 0 2px #ddd0ff;transition:transform .15s ease}
+.pick:hover{transform:translateY(-1px)}
+.pick[aria-pressed="true"]{color:#fff;text-shadow:0 1px 1px rgba(60,30,150,.35);background:linear-gradient(135deg,#ff7fb8,#9b7bff);box-shadow:0 0 0 2px #fff,0 0 0 3.5px #b9a2ff,0 6px 12px rgba(155,123,255,.3)}
+.ob-nav{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:18px}
+.btn.ghost{color:#5a3fd0;text-shadow:none;background:#f1ecff;box-shadow:none}
+.btn.ghost[hidden]{display:none}
+.count{font-family:var(--f-head);font-weight:700;font-size:14px;color:#8f74f0;margin-top:10px}
+.err{font-family:var(--f-head);font-weight:700;font-size:14px;color:#e0408a;min-height:1.5em;margin-top:8px}
+.sumlist{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.sumlist div{padding:10px 14px;border-radius:16px;background:#f5f1ff}
+.sumlist b{display:block;font-family:var(--f-head);font-size:13px;color:#8f74f0}
+.sumlist span{font-family:var(--f-head);font-weight:700;font-size:16px;color:var(--ink)}
+.me-chip{position:fixed;top:14px;left:14px;z-index:4;display:flex;align-items:center;gap:8px;padding:4px 16px 4px 4px;border-radius:999px;border:0;cursor:pointer;background:#fff;
+  box-shadow:0 0 0 2.5px rgba(155,123,255,.5),0 8px 18px rgba(40,30,110,.2);font-family:var(--f-head);font-weight:700;font-size:15px;color:#4c33b8}
+.me-chip i{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:15px;color:#fff;font-family:var(--f-logo);background:linear-gradient(135deg,#ff7fb8,#9b7bff)}
+.me-chip[hidden],body.reading .me-chip{display:none}
+@media (max-width:600px){.brand-top{top:104px}.brand-top .tagline{display:none}.logo{font-size:28px}}
+
+/* ───── phase 3: library of stories ───── */
+#lib{position:fixed;inset:0;z-index:10;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(16,10,38,.55);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+#lib.on{display:flex;animation:fade .3s ease both}
+#set{position:fixed;inset:0;z-index:13;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(16,10,38,.55);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+#set.on{display:flex;animation:fade .3s ease both}
+#set .card{max-width:500px}
+.gear{width:40px;height:40px;flex:none;border-radius:50%;border:0;cursor:pointer;display:grid;place-items:center;font-size:20px;line-height:1;color:#5a3fd0;background:#fff;box-shadow:0 0 0 2px rgba(155,123,255,.5),0 6px 14px rgba(0,0,0,.2)}
+.gear.home{position:fixed;top:56px;right:14px;z-index:4}
+body.reading .gear.home{display:none}
+.setrow{display:flex;flex-direction:column;gap:8px;margin-top:16px;padding:12px 14px;border-radius:18px;background:#f5f1ff}
+.setrow > b{font-family:var(--f-head);font-size:16px;color:var(--ink)}
+.setrow > span{font-family:var(--f-head);font-weight:600;font-size:13.5px;color:var(--ink-soft)}
+.seg{display:flex;flex-wrap:wrap;gap:8px}
+.seg button{flex:1;min-width:70px;cursor:pointer;border:0;border-radius:14px;padding:8px 6px;font-family:var(--f-head);font-weight:700;font-size:14.5px;color:#5a3fd0;background:#fff;box-shadow:0 0 0 2px #ddd0ff}
+.seg button[aria-pressed="true"]{color:#fff;background:linear-gradient(135deg,#ff7fb8,#9b7bff);box-shadow:0 0 0 2px #fff,0 0 0 3.5px #b9a2ff}
+.preview{padding:10px 12px;border-radius:14px;background:#fff;box-shadow:inset 0 0 0 2px #ece4ff}
+#upg{position:fixed;inset:0;z-index:12;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(16,10,38,.55);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+#upg.on{display:flex;animation:fade .3s ease both}
+#upg .card{max-width:520px}
+.wallet{display:flex;align-items:baseline;gap:10px;justify-content:center;margin-top:14px;padding:10px;border-radius:18px;background:linear-gradient(180deg,#fff7d6,#ffe9a8)}
+.wallet b{font-family:var(--f-logo);font-size:34px;color:#a8781f}
+.wallet span{font-family:var(--f-head);font-weight:700;font-size:15px;color:#7a5410}
+.lib-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;padding:10px 14px;border-radius:18px;background:linear-gradient(180deg,#fff7d6,#ffe9a8)}
+.lib-actions .pts{font-family:var(--f-head);font-weight:700;font-size:15px;color:#7a5410}
+.lib-actions .pts b{font-family:var(--f-logo);font-size:24px;color:#a8781f;margin:0 4px}
+.btn.upg{background:linear-gradient(135deg,#ffc24e,#ff8f6e 60%,#ff6fae)}
+.turn[hidden]{display:none}
+.turn:disabled{opacity:.35;cursor:default}
+#lib .card{max-width:920px;background:repeating-linear-gradient(90deg,#fbf8ff 0 30px,#f4eeff 30px 60px)}
+.lib-sub{font-family:var(--f-head);font-weight:600;font-size:15px;color:var(--ink-soft)}
+.shelf{display:grid;grid-template-columns:repeat(var(--cols,3),1fr);column-gap:14px;row-gap:22px;margin-top:20px;padding:0 6px}
+.slot{position:relative;display:flex;align-items:flex-end;justify-content:center;padding:0 4px 18px}
+.slot::after{content:"";position:absolute;left:-8px;right:-8px;bottom:0;height:16px;background:linear-gradient(180deg,#e0a874,#c98552 55%,#a8673a);box-shadow:0 8px 12px rgba(120,70,30,.25)}
+.slot:first-child::after,.slot.rowstart::after{left:-6px;border-radius:6px 0 0 6px}
+.slot.rowend::after{right:-6px;border-radius:0 6px 6px 0}
+.minibook{position:relative;width:100%;max-width:132px;aspect-ratio:3/4;border:0;padding:0;cursor:pointer;border-radius:3px 10px 10px 3px;color:#fff;overflow:hidden;
+  background:radial-gradient(circle at 25% 15%,rgba(255,255,255,.35),transparent 45%),linear-gradient(160deg,var(--c2),var(--c1));
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.4),2px 2px 0 #fffaf0,4px 4px 0 #e6dcf0,0 10px 16px rgba(60,40,120,.3);transition:transform .2s ease}
+.minibook:hover,.minibook:focus-visible{transform:translateY(-6px) rotate(-1.500deg)}
+.minibook .sp{position:absolute;left:0;top:0;bottom:0;width:10px;background:linear-gradient(90deg,rgba(0,0,0,.22),rgba(255,255,255,.2) 50%,rgba(0,0,0,.12))}
+.minibook .fr{position:absolute;inset:7px 7px 7px 15px;border:2px solid rgba(255,255,255,.75);border-radius:8px}
+.minibook .tt{position:absolute;left:18px;right:10px;top:16px;font-family:var(--f-head);font-weight:700;font-size:clamp(12px,3.2vw,14.5px);line-height:1.45;text-align:center;text-shadow:0 1px 3px rgba(40,20,90,.5)}
+.minibook .sl{position:absolute;left:calc(50% + 4px);bottom:30px;transform:translateX(-50%);width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-family:var(--f-logo);font-weight:700;font-size:13px;color:var(--c1);background:#fff;box-shadow:0 3px 8px rgba(40,20,90,.3)}
+.minibook .sc{position:absolute;left:18px;right:10px;bottom:11px;text-align:center;font-family:var(--f-logo);font-weight:700;font-size:11.5px;opacity:.95}
+.emptyslot{width:100%;max-width:132px;aspect-ratio:3/4;border-radius:10px;border:2.5px dashed rgba(155,123,255,.35);display:grid;place-items:center;font-family:var(--f-head);font-weight:600;font-size:13px;color:#b8acdf}
+.lib-empty{display:flex;align-items:center;gap:12px;margin-top:16px;padding:12px 16px;border-radius:18px;background:#fff;box-shadow:0 0 0 2px #e6dcff}
+.lib-empty p{font-family:var(--f-head);font-weight:700;font-size:16px;color:var(--ink)}
+
+/* reading pages: Thai on top, English underneath */
+.rp{padding:10px 12px;border-radius:16px;background:#fff;box-shadow:0 0 0 2px #ece4ff}
+.rp .thai{font-size:clamp(17px,calc(var(--pw)*.054),21px)}
+.rp .en{font-size:clamp(17px,calc(var(--pw)*.054),20px);font-weight:600;color:#14907d;margin-top:4px;padding-top:6px;border-top:2px dashed #e6dcff}
+.rp .no{font-family:var(--f-logo);font-weight:700;font-size:12px;color:#b1a5dc}
+.rfoot{margin-top:auto;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.rfoot .pagefoot{margin:0}
+
+/* mascot */
+.mascot{width:96px;height:auto;flex:none;animation:bobm 3.2s ease-in-out infinite;overflow:visible}
+.mascot.mini{width:60px}
+.mascot.big{width:118px}
+@keyframes bobm{50%{transform:translateY(-6px)}}
+
+/* ───── reading: the world dims, the book comes forward ───── */
+body.smooth .scrim{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgba(10,6,24,.84)}
+body.smooth #modal,body.smooth #lib,body.smooth #upg,body.smooth #onboard,body.smooth #set{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgba(10,6,28,.7)}
+.scrim{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:0;transition:opacity .7s ease;
+  background:radial-gradient(ellipse 70% 60% at 50% 52%,rgba(20,12,40,.35),rgba(10,6,24,.8));-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px)}
+body.reading .scrim{opacity:1}
+body.reading .brand-top{display:none}
+.bookscreen{position:fixed;inset:0;z-index:3;display:none;flex-direction:column;align-items:center}
+body.reading .bookscreen{display:flex;animation:fade .5s ease both}
+.topbar{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px 0}
+.tb-title{font-family:var(--f-head);font-weight:700;font-size:15px;color:#fff;text-shadow:0 2px 6px rgba(0,0,0,.4);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+#stage{position:relative;width:100%;flex:1;min-height:0}
+#cam{position:absolute;left:50%;top:20px;width:0;height:var(--ph);transform-origin:0 50%;transition:transform 1s cubic-bezier(.55,0,.2,1)}
+#book{position:absolute;left:0;top:0;width:0;height:100%;perspective:2600px}
+.cambar{display:flex;gap:8px;padding:6px;margin:0 0 14px;border-radius:999px;background:rgba(255,255,255,.22);box-shadow:0 0 0 1.5px rgba(255,255,255,.4)}
+.glowspot{position:absolute;top:calc(var(--ph)*.5 - var(--ph)*.62);left:calc(-1*var(--pw) - 120px);width:calc(2*var(--pw) + 240px);height:calc(var(--ph)*1.24);border-radius:50%;
+  background:radial-gradient(closest-side,rgba(255,236,170,.45),rgba(255,236,170,.12) 60%,transparent);pointer-events:none}
+#book:not(.open) .glowspot{left:calc(-120px);width:calc(var(--pw) + 250px)}
+.bookshadow{position:absolute;top:16px;left:calc(-1*var(--pw) - 10px);width:calc(2*var(--pw) + 20px);height:var(--ph);border-radius:12px;box-shadow:0 34px 60px rgba(0,0,0,.55),0 8px 16px rgba(0,0,0,.4)}
+#book:not(.open) .bookshadow{left:0;width:calc(var(--pw) + 10px)}
+.board{position:absolute;top:-8px;width:calc(var(--pw) + 10px);height:calc(var(--ph) + 16px);background:linear-gradient(160deg,var(--bk2,#7d63ff),var(--bk1,#4fb4ff));box-shadow:inset 0 0 0 1px rgba(255,255,255,.3)}
+.board.L{left:calc(-1*var(--pw) - 10px);border-radius:12px 0 0 12px}
+.board.R{left:0;border-radius:0 12px 12px 0}
+.stack{position:absolute;top:2px;height:calc(var(--ph) - 4px);background:repeating-linear-gradient(90deg,#fffaf0 0 1px,#e2d8ea 1px 2px)}
+.stack.L{right:var(--pw);width:var(--tl,3px);border-radius:3px 0 0 3px}
+.stack.R{left:var(--pw);width:var(--tr,9px);border-radius:0 3px 3px 0}
+.pg{position:absolute;top:0;width:var(--pw);height:var(--ph);color:var(--ink);overflow:hidden;
+  background:radial-gradient(circle,rgba(155,123,255,.16) 1.1px,transparent 1.5px) 0 0/18px 18px,linear-gradient(180deg,var(--paper),var(--paper-2))}
+.pg.L{left:calc(-1*var(--pw));border-radius:6px 0 0 6px}
+.pg.R{left:0;border-radius:0 6px 6px 0}
+.pg::after{content:"";position:absolute;inset:0;pointer-events:none}
+.pg.L::after{background:linear-gradient(270deg,rgba(90,70,160,.30) 0,rgba(90,70,160,.10) 4%,rgba(255,255,255,.4) 12%,transparent 24%)}
+.pg.R::after{background:linear-gradient(90deg,rgba(90,70,160,.30) 0,rgba(90,70,160,.10) 4%,rgba(255,255,255,.4) 12%,transparent 24%)}
+.pg-in{zoom:var(--fz,1);position:absolute;inset:0;padding:20px 20px 12px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#cbbcff transparent}
+.pg.L .pg-in{padding-right:28px}.pg.R .pg-in{padding-left:28px}
+#book:not(.open) .board.L,#book:not(.open) .stack.L,#book:not(.open) #pgL,#book:not(.open) .gutter,#book.open #cover{display:none}
+.gutter{position:absolute;left:-3px;top:0;width:6px;height:var(--ph);background:linear-gradient(90deg,rgba(90,70,160,.12),rgba(90,70,160,.4) 50%,rgba(90,70,160,.12));pointer-events:none;z-index:2}
+.cast-shadow{position:absolute;top:0;width:var(--pw);height:var(--ph);pointer-events:none;opacity:0;z-index:3}
+#shR{left:0;background:linear-gradient(90deg,rgba(60,45,130,.4),rgba(60,45,130,.08) 70%,transparent)}
+#shL{left:calc(-1*var(--pw));background:linear-gradient(270deg,rgba(60,45,130,.36),rgba(60,45,130,.06) 70%,transparent)}
+.bookmark{position:absolute;left:14px;top:calc(var(--ph) - 4px);width:18px;height:52px;z-index:-1;background:linear-gradient(90deg,#ff5ea2,#ff9cc8 45%,#ff5ea2);clip-path:polygon(0 0,100% 0,100% 100%,50% 80%,0 100%)}
+
+/* turning leaf */
+.leaf{position:absolute;left:0;width:0;z-index:5;transform-style:preserve-3d;pointer-events:none}
+.strip{position:absolute;top:0;transform-origin:0 50%;transform-style:preserve-3d;will-change:transform}
+.face{position:absolute;top:0;left:0;height:100%;overflow:hidden;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.face.back{transform:rotateY(180deg)}
+.face .ghost{position:absolute!important;top:0!important;margin:0!important;display:block!important;border-radius:0!important;visibility:visible!important}
+/* the moving copy of a page skips the costly effects; they come back when it lands */
+.face .ghost *,.face .ghost{animation:none!important;transition:none!important;filter:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+.face .ghost .btn,.face .ghost .linebox,.face .ghost .rp,.face .ghost .lesson,.face .ghost .scorebox,.face .ghost .infobox div,.face .ghost .plate{box-shadow:none!important}
+.face .ghost .pg-in{overflow:hidden!important}
+.face .shade{position:absolute;inset:0;background:#4b3f98;opacity:0;pointer-events:none}
+.face.back .shade{background:linear-gradient(90deg,#4b3f98,#8f7fe0)}
+
+/* cover */
+.cover{position:absolute;left:0;top:-8px;width:calc(var(--pw) + 10px);height:calc(var(--ph) + 16px);border:0;padding:0;cursor:pointer;overflow:hidden;
+  border-radius:4px 14px 14px 4px;color:#fff;text-align:center;display:block;
+  background:radial-gradient(circle at 20% 15%,rgba(255,255,255,.3),transparent 40%),radial-gradient(circle,rgba(255,255,255,.13) 1px,transparent 1.5px) 0 0/14px 14px,linear-gradient(160deg,var(--bk2,#7d63ff),var(--bk1,#4fb4ff));
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.4),inset -3px 0 6px rgba(50,30,140,.3),2px 2px 0 #fffaf0,4px 4px 0 #ece3f4,6px 6px 0 #ddd2ec,8px 8px 0 var(--bk1,#4a3fb8)}
+.cover .hinge{position:absolute;left:0;top:0;bottom:0;width:22px;background:linear-gradient(90deg,rgba(50,30,140,.45),rgba(255,255,255,.25) 38%,rgba(50,30,140,.32) 62%,rgba(255,255,255,.18) 80%,transparent)}
+.cover .foilframe{position:absolute;inset:14px 14px 14px 32px;border-radius:18px;border:3px solid transparent;background:var(--holo) border-box;
+  -webkit-mask:linear-gradient(#000 0 0) padding-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) padding-box exclude,linear-gradient(#000 0 0)}
+.cover .twinkle{position:absolute;width:22px;height:22px}
+.cover .body{position:absolute;inset:14px 14px 14px 32px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:22px 18px 20px}
+.cover .series{font-family:var(--f-logo);font-weight:700;letter-spacing:.2em;font-size:14px;color:#fff;text-shadow:0 2px 6px rgba(50,30,140,.5)}
+.cover .scene{width:min(78%,250px);height:auto;filter:drop-shadow(0 8px 14px rgba(50,30,140,.35))}
+.plate{position:relative;padding:10px 18px 8px;border-radius:18px;background:#fff;color:var(--ink);box-shadow:0 10px 20px rgba(50,30,140,.3)}
+.plate::before{content:"";position:absolute;inset:-3px;border-radius:21px;padding:3px;background:var(--holo);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0)}
+.plate h1{font-size:clamp(20px,calc(var(--pw)*.066),28px);line-height:1.45;color:#4c33b8}
+.plate .tiny{font-family:var(--f-head);font-weight:600;font-size:13px;color:var(--ink-soft)}
+.seal{width:60px;height:60px;border-radius:50%;display:grid;place-items:center;font-family:var(--f-logo);font-weight:700;font-size:20px;color:#fff;text-shadow:0 1px 2px rgba(50,30,140,.6);
+  background:conic-gradient(from 30deg,#7ee8fa,#9fb4ff,#d3a6ff,#ffa6d1,#ffe29a,#7ee8fa);box-shadow:0 0 0 3px #fff,0 8px 16px rgba(50,30,140,.35)}
+
+/* back cover and closing the book */
+.cover.backcover{left:calc(-1*var(--pw) - 10px);border-radius:14px 4px 4px 14px;
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.4),inset 3px 0 6px rgba(50,30,140,.3),-2px 2px 0 #fffaf0,-4px 4px 0 #ece3f4,-6px 6px 0 #ddd2ec,-8px 8px 0 var(--bk1,#4a3fb8)}
+.cover.backcover .hinge{left:auto;right:0;transform:scaleX(-1)}
+.cover.backcover .foilframe{inset:14px 32px 14px 14px}
+.cover.backcover .body{inset:14px 32px 14px 14px;justify-content:center;gap:14px}
+.bc-kick{font-family:var(--f-head);font-weight:700;font-size:13px;letter-spacing:.06em;color:#ffe08a;padding:2px 12px;border-radius:999px;background:rgba(255,255,255,.14)}
+.bc-moral{font-family:var(--f-en);font-weight:600;font-size:clamp(17px,calc(var(--pw)*.056),22px);line-height:1.45;color:#fff;text-shadow:0 1px 3px rgba(40,20,90,.5);max-width:92%}
+.bc-moral-th{font-family:var(--f-head);font-weight:600;font-size:clamp(14px,calc(var(--pw)*.045),17px);line-height:1.6;color:#f1ecff;max-width:92%}
+.bc-score{font-family:var(--f-logo);font-weight:700;font-size:20px;color:#ffe08a;text-shadow:0 1px 3px rgba(40,20,90,.5)}
+.cover.backcover .stars svg{width:26px;height:26px}
+.bc-quote{font-family:var(--f-head);font-weight:600;font-size:15px;line-height:1.7;color:#fff;text-shadow:0 1px 3px rgba(40,20,90,.5);max-width:90%}
+.bc-small{font-family:var(--f-head);font-weight:600;font-size:13px;color:#e8e2ff}
+#book:not(.back) #backcover{display:none}
+#book.back .board,#book.back .stack,#book.back .pg,#book.back .gutter,#book.back .cast-shadow,#book.back #cover{display:none}
+#book.back .bookshadow{left:calc(-1*var(--pw) - 10px);width:calc(var(--pw) + 10px)}
+#book.back .bookmark{left:calc(-1*var(--pw) + 4px)}
+#book.landR .board.R,#book.landR .stack.R,#book.landR #pgR{visibility:hidden}
+#book.landL .board.L,#book.landL .stack.L,#book.landL #pgL{visibility:hidden}
+.endpaper .ex .btn{margin-top:10px}
+
+/* ───── page content ───── */
+.endpaper{position:absolute;inset:0;display:grid;place-items:center;
+  background:radial-gradient(circle at 12px 12px,rgba(255,255,255,.55) 1.4px,transparent 2px) 0 0/24px 24px,linear-gradient(160deg,var(--bk2,#9a86ff),var(--bk1,#6f8dff))}
+.endpaper .ex{background:#fff;color:var(--ink);padding:16px 24px;border-radius:18px;text-align:center;box-shadow:0 10px 24px rgba(50,30,140,.3);max-width:76%}
+.endpaper .ex b{display:block;font-family:var(--f-head);font-size:18px;color:#4c33b8}
+.pagehead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.qno{font-family:var(--f-head);font-weight:700;font-size:22px;color:#4c33b8;line-height:1.2}
+.qno small{font-family:var(--f-logo);font-size:14px;color:var(--ink-soft);font-weight:600}
+.lvchip{font-family:var(--f-logo);font-weight:700;font-size:12.5px;color:#fff;padding:2px 11px;border-radius:999px;background:linear-gradient(135deg,#5fa8ff,#9b7bff);white-space:nowrap}
+.lvchip.ans{background:linear-gradient(135deg,#3fd0b8,#2fa8d8)}
+.pips{display:flex;gap:5px}
+.pip{width:9px;height:9px;border-radius:50%;background:#e6e0f8}
+.pip.done{background:linear-gradient(135deg,#5fe0cc,#5fa8ff)}
+.pip.now{background:var(--pink);box-shadow:0 0 0 3px rgba(255,111,174,.25)}
+.cast{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.cast .k{font-family:var(--f-head);font-weight:700;font-size:13px;color:var(--ink-soft)}
+.who{display:inline-flex;align-items:center;gap:6px;padding:1px 11px 1px 3px;border-radius:999px;background:#fff;box-shadow:0 0 0 2px #ffbcd8;font-family:var(--f-head);font-weight:700;font-size:14.5px}
+.who i{width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,#ffaed0,#ff6fae);display:grid;place-items:center;font-style:normal;color:#fff;font-size:12px;font-family:var(--f-logo)}
+.who b{font-family:var(--f-en);font-weight:700;color:#e0408a}
+.who i.g{font-family:system-ui,"Segoe UI Symbol","Noto Sans Symbols 2",sans-serif;font-size:14px;font-weight:700}
+.who i.m{background:linear-gradient(135deg,#8ec5ff,#3d8bff)}
+.who i.an{width:26px;height:26px;background:#fff4dc;box-shadow:0 0 0 1.500px #ffb870;font-size:15px;font-family:"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif}
+.prev{font-family:var(--f-head);font-weight:500;font-size:14.5px;line-height:1.6;color:#5c558d;padding:7px 12px;border-radius:14px;background:rgba(155,123,255,.1)}
+.prev span{display:block;font-size:12px;font-weight:700;color:#8f74f0}
+.linebox{position:relative;border-radius:18px;padding:28px 14px 12px;background:#fff;box-shadow:0 0 0 2.5px #ddd0ff,0 8px 16px rgba(155,123,255,.14)}
+.tense{position:absolute;top:-2px;right:-2px;font-family:var(--f-head);font-weight:700;font-size:14px;color:#fff;padding:2px 13px 3px 15px;border-radius:0 18px 0 16px;background:linear-gradient(135deg,#b69aff,#8f6cf0)}
+.tense[data-t="อดีต"]{background:linear-gradient(135deg,#ffbe5c,#ff8a4c)}
+.tense[data-t="ปัจจุบัน"]{background:linear-gradient(135deg,#ff92c4,#ff5ea2)}
+.tense[data-t="อนาคต"]{background:linear-gradient(135deg,#7fc4ff,#4a88ff)}
+.thai{font-family:var(--f-head);font-weight:700;font-size:clamp(20px,calc(var(--pw)*.064),25px);line-height:1.6;color:var(--ink)}
+.lab{font-family:var(--f-logo);font-weight:700;letter-spacing:.1em;font-size:12.5px;color:#7a5ae0}
+textarea{width:100%;min-height:104px;resize:none;border:0;border-radius:4px;padding:0 4px;flex:none;
+  font-family:var(--f-en);font-weight:500;font-size:21px;line-height:34px;color:var(--ink);background:repeating-linear-gradient(180deg,transparent 0,transparent 33px,rgba(155,123,255,.5) 33px,rgba(155,123,255,.5) 34px)}
+textarea::placeholder{color:#b6abdc}
+.cluebox{padding:7px 12px;border-radius:12px;background:#e3faf5;box-shadow:inset 4px 0 0 var(--mint);font-family:var(--f-head);font-weight:600;font-size:15px;line-height:1.6}
+.cluebox b{font-family:var(--f-en);font-weight:700;color:#14907d}
+.note{font-family:var(--f-head);font-weight:600;font-size:14px;color:#e0408a}
+.pagefoot{margin-top:auto;display:flex;justify-content:center;font-family:var(--f-logo);font-weight:700;color:#b1a5dc;font-size:14px}
+.written{position:relative;padding:10px 12px;border-radius:16px;background:#fff;box-shadow:0 0 0 2.5px #c9f2ea}
+.hand{font-family:var(--f-en);font-weight:600;font-size:20px;line-height:1.5;color:#4c33b8;padding-right:62px;min-height:28px}
+.sticker{position:absolute;top:-16px;right:-8px;width:70px;height:70px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;transform:rotate(12deg);
+  background:conic-gradient(from 0deg,#7ee8fa,#9fb4ff,#d3a6ff,#ffa6d1,#ffe29a,#7ee8fa);box-shadow:0 0 0 3px #fff,0 8px 14px rgba(90,70,180,.3);color:#fff;text-shadow:0 1px 2px rgba(50,30,140,.6);line-height:1}
+.sticker b{font-family:var(--f-logo);font-size:23px}
+.sticker small{font-family:var(--f-logo);font-size:11px;font-weight:700}
+.sticker.pop{animation:stamp .6s cubic-bezier(.3,1.6,.5,1) both}
+@keyframes stamp{from{transform:rotate(-30deg) scale(2.2);opacity:0}to{transform:rotate(12deg) scale(1);opacity:1}}
+.waiting{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;border-radius:20px;border:2.5px dashed #d8ccff;background:rgba(255,255,255,.6);padding:20px}
+.waiting .w-t{font-family:var(--f-head);font-weight:700;font-size:21px;color:#8f74f0}
+.center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center}
+.center h1{font-size:clamp(21px,calc(var(--pw)*.068),28px);line-height:1.45;color:#4c33b8}
+.badges{gap:10px!important;width:100%}
+.badge{font-family:var(--f-logo);font-weight:700;font-size:12.5px;padding:2px 12px;border-radius:999px;color:#5a3fd0;background:#fff;box-shadow:0 0 0 2px #d6c8ff}
+.infobox{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+.infobox div{min-width:74px;padding:6px 8px;border-radius:14px;background:#fff;box-shadow:0 0 0 2px #e2d8ff;line-height:1.25}
+.infobox b{display:block;font-family:var(--f-logo);font-size:22px;color:#5a3fd0}
+.infobox small{font-family:var(--f-head);font-weight:600;font-size:12px;color:var(--ink-soft)}
+
+/* answer page */
+.scorebox{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:20px;background:#fff;box-shadow:0 0 0 2.5px #e2d8ff}
+.ring{--r:.5;width:86px;height:86px;flex:none;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:radial-gradient(closest-side,#fff 76%,transparent 77%),conic-gradient(#ff7fb8,#9b7bff calc(var(--r)*50%),#5fa8ff calc(var(--r)*100%),#ebe5fb 0)}
+.ring .n{font-family:var(--f-logo);font-weight:700;font-size:30px;line-height:1;color:#5a3fd0}
+.ring .of{font-family:var(--f-logo);font-weight:600;font-size:12px;color:var(--ink-soft)}
+.cheer{font-family:var(--f-head);font-weight:700;font-size:16.5px;line-height:1.5;color:#e0408a}
+.pair{display:flex;flex-direction:column;gap:3px}
+.tag{align-self:flex-start;font-family:var(--f-head);font-weight:700;font-size:12.5px;color:#fff;padding:1px 11px;border-radius:999px}
+.tag.me{background:linear-gradient(135deg,#ff92c4,#ff5ea2)}
+.tag.ok{background:linear-gradient(135deg,#5fe0cc,#2fbfa8)}
+.tag.ai{background:linear-gradient(135deg,#9b7bff,#5fa8ff)}
+.aibox{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:16px;background:#f1ecff;box-shadow:inset 0 0 0 2px #e2d8ff}
+.aibox .tip{font-family:var(--f-head);font-weight:600;font-size:15px;line-height:1.6;color:#4c33b8}
+.m-status{margin-top:12px;padding:8px 12px;border-radius:12px;text-align:center;font-family:var(--f-head);font-weight:700;font-size:14px;line-height:1.55;color:#fff;background:rgba(255,255,255,.14)}
+.m-resume{margin-top:12px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;border-radius:14px;background:rgba(255,255,255,.12);font-family:var(--f-head);font-weight:600;font-size:14px;color:#fff}
+.m-resume b{color:#ffe08a}
+.spin-dot{display:inline-block;width:14px;height:14px;margin-right:6px;vertical-align:-2px;border-radius:50%;border:3px solid rgba(255,255,255,.35);border-top-color:#fff;animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.en{font-family:var(--f-en);font-weight:500;font-size:20px;line-height:1.55;color:var(--ink)}
+.en.model{font-weight:600;color:#14907d}
+.en .hit{background:linear-gradient(transparent 56%,#ffe27a 56%)}
+.en .clue{color:#9d88ea;border-bottom:2px dotted #9d88ea}
+.en .miss{color:#a29cc8}
+.lesson{padding:12px 14px;border-radius:18px;background:#f5f1ff;box-shadow:inset 0 0 0 2px #e6dcff}
+.lesson h3{font-size:17px;line-height:1.45;color:#4c33b8;margin:2px 0 6px}
+.lesson p{font-family:var(--f-body);font-weight:500;font-size:15.5px;line-height:1.7}
+.lesson p + p{margin-top:8px}
+.lesson em{font-style:normal;font-family:var(--f-en);font-weight:700;color:#e0408a}
+
+/* end pages */
+.story{font-family:var(--f-head);font-weight:600;font-size:16px;line-height:1.85}
+.story.en{font-family:var(--f-en);font-weight:500;font-size:18px;line-height:1.75;color:#14907d}
+.total{font-family:var(--f-logo);font-weight:700;font-size:56px;line-height:1;background:linear-gradient(135deg,#ff7fb8,#9b7bff,#5fa8ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+.stars{display:flex;gap:4px}
+.stars svg{width:32px;height:32px}
+.tally{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;width:100%}
+.tally div{padding:4px 0;border-radius:12px;background:#fff;box-shadow:0 0 0 2px #e2d8ff;font-family:var(--f-logo);font-weight:700;color:#5a3fd0;line-height:1.3}
+.tally small{display:block;font-family:var(--f-head);font-weight:600;color:var(--ink-soft);font-size:11.5px}
+
+canvas#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:8}
+@media (prefers-reduced-motion:reduce){
+  .bob,.smoke,.drift,.spin,.sway,.glowwin,.mascot,.sticker.pop,.card,#modal.on,body.reading .bookscreen{animation:none}
+  #cam,.scrim{transition:none}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="g-holo" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7ee8fa"/><stop offset=".35" stop-color="#d3a6ff"/><stop offset=".7" stop-color="#ffa6d1"/><stop offset="1" stop-color="#ffe29a"/></linearGradient>
+    <linearGradient id="g-body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d9ccff"/><stop offset="1" stop-color="#a58bff"/></linearGradient>
+    <linearGradient id="g-screen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3a3270"/><stop offset="1" stop-color="#5b4ea8"/></linearGradient>
+    <linearGradient id="g-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9fd0ff"/><stop offset=".6" stop-color="#ddd3ff"/><stop offset="1" stop-color="#ffd6ea"/></linearGradient>
+    <linearGradient id="g-star" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe9a3"/><stop offset="1" stop-color="#ffb84d"/></linearGradient>
+    <clipPath id="c-arch"><path d="M14 236V100a86 86 0 0 1 172 0v136z"/></clipPath>
+  </defs>
+</svg>
+
+<div id="room" aria-label="ห้องสมุดทรงกลม ลากซ้ายขวาเพื่อหมุน"></div>
+<div class="room-light" aria-hidden="true"></div>
+<div class="scrim" aria-hidden="true"></div>
+<button class="altar-label" id="altar">หนังสือปริศนา · แตะเพื่อเลือกระดับ</button>
+<div class="booktip" id="booktip"></div>
+<button class="turn" id="turnL" aria-label="หมุนห้องสมุดไปทางซ้าย">◀</button>
+<button class="turn" id="turnR" aria-label="หมุนห้องสมุดไปทางขวา">▶</button>
+<button class="btn small allbooks" id="allbooks">📚 หนังสือทั้งหมด</button>
+<button class="gear home" id="gear-home" aria-label="ตั้งค่า">⚙</button>
+<div class="hint" id="hint">ลากซ้ายขวาเพื่อหมุนห้องสมุด</div>
+
+<header class="brand-top">
+  <div class="logo">Trans<span>-</span>taler</div>
+  <div class="tagline">แปลไทยเป็นอังกฤษ ไปพร้อมกับเรื่องเล่า</div>
+</header>
+
+<button class="me-chip" id="me-chip" hidden aria-label="แก้ข้อมูลของฉัน"><i id="me-init"></i><span id="me-name"></span></button>
+
+<div id="onboard" role="dialog" aria-modal="true" aria-labelledby="ob-q">
+  <div class="card" id="ob-card"></div>
+</div>
+
+<div id="set" role="dialog" aria-modal="true" aria-labelledby="set-title">
+  <div class="card"><button class="x" id="set-close" aria-label="ปิด">×</button><div id="set-body"></div></div>
+</div>
+
+<div id="upg" role="dialog" aria-modal="true" aria-labelledby="upg-title">
+  <div class="card"><button class="x" id="upg-close" aria-label="ปิด">×</button><div id="upg-body"></div></div>
+</div>
+
+<div id="lib" role="dialog" aria-modal="true" aria-labelledby="lib-title">
+  <div class="card">
+    <button class="x" id="lib-close" aria-label="ปิด">×</button>
+    <div class="card-head"><div id="lib-mascot"></div><div><div class="kicker">ห้องสมุดแห่งเรื่องราว</div><h2 id="lib-title">ห้องสมุด</h2><p class="lib-sub" id="lib-sub"></p></div></div>
+    <div class="lib-actions"><span class="pts">คะแนนสะสม ⭐<b id="lib-pts">0</b></span><button class="btn small upg" id="lib-upg">⬆ อัปเกรดห้องสมุด</button></div>
+    <div id="lib-body"></div>
+  </div>
+</div>
+
+<div id="modal" role="dialog" aria-modal="true" aria-labelledby="m-title">
+  <div class="mcover">
+    <button class="x" id="b-close" aria-label="ปิด">×</button>
+    <div class="m-in">
+      <div class="m-top">TRANS-TALER</div>
+      <div class="m-q" aria-hidden="true">?</div>
+      <h2 id="m-title">หนังสือปริศนา</h2>
+      <p class="m-sub" id="m-sub">เลือกระดับบนปก แล้วเรื่องจะถูกสุ่มให้</p>
+      <div class="medals" id="levels"></div>
+      <p class="m-likes" id="m-likes"></p>
+      <p class="m-full" id="m-full" hidden></p>
+      <div class="m-resume" id="m-resume" hidden></div>
+      <p class="m-status" id="m-status" hidden></p>
+      <div class="row mid"><button class="btn ghost small" id="b-sample" hidden>ใช้เรื่องตัวอย่าง</button><button class="btn" id="b-start">เปิดหนังสือ ✦</button></div>
+      <p class="fine">ต้นแบบให้คะแนนด้วยการเทียบคำกับเฉลยหลายแบบ เมื่อเชื่อม Gemini แล้วจะให้คะแนนจากความหมายของประโยค</p>
+    </div>
+  </div>
+</div>
+
+<section class="bookscreen" id="s-book">
+  <div class="topbar"><button class="btn cam" id="b-home">◀ กลับห้องสมุด</button><span class="tb-title" id="tb-title"></span><button class="gear" id="gear-book" aria-label="ตั้งค่า">⚙</button></div>
+  <div id="stage">
+    <div id="cam">
+      <div id="book">
+        <div class="glowspot"></div>
+        <div class="bookshadow"></div>
+        <span class="bookmark" aria-hidden="true"></span>
+        <div class="board L"></div><div class="board R"></div>
+        <div class="stack L"></div><div class="stack R"></div>
+        <div class="pg L" id="pgL"></div>
+        <div class="pg R" id="pgR"></div>
+        <div class="gutter"></div>
+        <div class="cast-shadow" id="shL"></div><div class="cast-shadow" id="shR"></div>
+        <button class="cover" id="cover" aria-label="เปิดหนังสือ"></button>
+        <button class="cover backcover" id="backcover" aria-label="เปิดหนังสืออีกครั้งจากปกหลัง"></button>
+      </div>
+    </div>
+  </div>
+  <div class="cambar" id="controls"></div>
+</section>
+
+<div class="toast" id="toast" role="status"></div>
+<canvas id="fx" aria-hidden="true"></canvas>
+
+<script src="three.min.js"></script>
+<script>if(!window.THREE) document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>');</script>
+<script>
+/* ───── settings: book animation on/off, text size, how pretty vs how smooth the 3D room is ───── */
+const SKEY = "trans-taller.settings";
+const IS_PHONE = Math.min(screen.width, screen.height) < 700 || matchMedia("(pointer: coarse)").matches;
+function loadSettings(){
+  const d = { bookAnim:true, font: IS_PHONE ? .88 : 1, quality: IS_PHONE ? "smooth" : "pretty" };
+  try{ return Object.assign(d, JSON.parse(localStorage.getItem(SKEY)) || {}); }catch(e){ return d; }
+}
+let SET = loadSettings();
+function saveSettings(){ try{ localStorage.setItem(SKEY, JSON.stringify(SET)); }catch(e){} }
+function applySettings(){
+  document.documentElement.style.setProperty("--fz", SET.font);
+  document.body.classList.toggle("smooth", SET.quality === "smooth");
+}
+const smoothMode = () => SET.quality === "smooth";
+const leafStrips = () => smoothMode() || innerWidth < 760 ? 6 : 12;
+const STORIES = [{
+  id: "rain-bookshop", tags: ["แฟนตาซี","ลึกลับ / สืบสวน","ชีวิตประจำวัน"],
+  title: "ร้านหนังสือยามฝนตก", hue: 330,
+  moral: { en: "Good things can find us even on a rainy, gloomy day.", th: "สิ่งดี ๆ หาเราเจอได้ แม้ในวันที่ฝนตกและหม่นหมอง" },
+  level: "A2", genre: "เรื่องสั้น",
+  cast: [["มิน","Min","f"]],
+  lines: [
+    { th: "คืนนี้ฝนตกหนักมาก", tense: "ปัจจุบัน",
+      refs: ["It is raining very hard tonight.", "It's raining very hard tonight.", "It is raining very heavily tonight.", "It's raining very heavily tonight.", "Tonight it is raining very hard.", "Tonight it's raining very hard."],
+      vocab: [["ฝนตกหนัก","rain hard"],["คืนนี้","tonight"]], vwords: ["raining","rain","hard","tonight"],
+      name: "Present Continuous กับประธาน it ของอากาศ",
+      lesson: ["ภาษาไทยพูดว่า “ฝนตก” ได้เลย แต่ประโยคอังกฤษต้องมีประธานเสมอ เวลาพูดเรื่องอากาศจึงยืม <em>it</em> มายืนเป็นประธานให้",
+               "ฝนกำลังตกอยู่ตอนนี้ จึงใช้ <em>is</em> ตามด้วยกริยาเติม ing ได้เป็น <em>It is raining</em> ส่วนฝนตก “หนัก” ใช้ <em>hard</em> หรือ <em>heavily</em> ไม่ใช้ strong"] },
+    { th: "มินวิ่งเข้าไปในร้านหนังสือเล็ก ๆ ร้านหนึ่ง", tense: "อดีต",
+      refs: ["Min ran into a small bookshop.", "Min ran into a small bookstore.", "Min ran into a little bookshop.", "Min ran into a little bookstore.", "Min ran into a small book shop."],
+      vocab: [["วิ่งเข้าไปใน","run into (อดีต ran into)"],["ร้านหนังสือ","bookshop"]], vwords: ["ran","run","into","bookshop"],
+      name: "Past Simple เล่าเรื่องที่เกิดไปแล้ว",
+      lesson: ["เรื่องเล่าแบบนี้เล่าด้วยอดีต กริยา <em>run</em> เป็นกริยาที่เปลี่ยนรูปเอง กลายเป็น <em>ran</em> ไม่เติม ed",
+               "<em>into</em> บอกการเคลื่อนจากข้างนอกเข้าไปข้างใน และใช้ <em>a</em> นำหน้า เพราะเพิ่งพูดถึงร้านนี้เป็นครั้งแรก คนฟังยังไม่รู้จัก"] },
+    { th: "ในร้านมีหนังสือเก่าอยู่ทุกที่", tense: "อดีต",
+      refs: ["There were old books everywhere in the shop.", "There were old books everywhere in the store.", "There were old books everywhere in the bookshop.", "In the shop, there were old books everywhere.", "Old books were everywhere in the shop."],
+      vocab: [["ทุกที่","everywhere"],["เก่า","old"]], vwords: ["everywhere","old"],
+      name: "There was / There were บอกว่ามีอะไรอยู่",
+      lesson: ["“มี” ที่หมายถึงมีของอยู่ตรงไหนสักแห่ง ไม่ใช้ have แต่ขึ้นประโยคด้วย <em>There</em>",
+               "หนังสือมีหลายเล่มและเป็นเรื่องในอดีต จึงเป็น <em>There were old books</em> ถ้ามีเล่มเดียวจะเป็น There was an old book"] },
+    { th: "ชายแก่คนหนึ่งยิ้มและยื่นหนังสือสีน้ำเงินให้เธอ", tense: "อดีต",
+      refs: ["An old man smiled and gave her a blue book.", "An old man smiled and handed her a blue book.", "An old man smiled and gave a blue book to her.", "An old man smiled and handed a blue book to her."],
+      vocab: [["ยื่นให้","give (อดีต gave) หรือ hand (handed)"],["ชายแก่","old man"]], vwords: ["gave","give","handed","hand","old","man"],
+      name: "give + คนรับ + ของ",
+      lesson: ["กริยา “ให้” วางคนรับไว้ก่อนแล้วตามด้วยของได้เลย <em>gave her a blue book</em> ไม่ต้องมี to คั่น",
+               "<em>old</em> ขึ้นต้นด้วยเสียงสระ จึงใช้ <em>an</em> และเมื่อเชื่อมสองกริยาด้วย and ทั้งคู่ต้องเป็นอดีตเหมือนกัน <em>smiled and gave</em>"] },
+    { th: "“หนังสือเล่มนี้รอเธออยู่” เขาพูด", tense: "อดีต · ในคำพูดเป็นปัจจุบัน", tkey: "อดีต",
+      refs: ["\"This book is waiting for you,\" he said.", "\"This book was waiting for you,\" he said.", "\"This book has been waiting for you,\" he said.", "He said, \"This book is waiting for you.\""],
+      vocab: [["รอ","wait for"]], vwords: ["waiting","wait","for"],
+      name: "wait for และการเขียนคำพูดของตัวละคร",
+      lesson: ["รอใครหรือรออะไร ต้องมี <em>for</em> ตามหลัง wait เสมอ <em>waiting for you</em>",
+               "คำพูดของตัวละครอยู่ในเครื่องหมายคำพูด ปิดท้ายด้วยลูกน้ำ แล้วตามด้วย <em>he said</em> ข้างในคำพูดใช้ปัจจุบันได้ เพราะเป็นคำที่เขาพูดในตอนนั้นจริง ๆ"] },
+    { th: "พอมินเปิดหนังสือ ฝนก็หยุดตก", tense: "อดีต",
+      refs: ["When Min opened the book, the rain stopped.", "The rain stopped when Min opened the book.", "When Min opened the book, it stopped raining.", "As soon as Min opened the book, the rain stopped."],
+      vocab: [["หยุด","stop (อดีต stopped)"],["เปิด","open"]], vwords: ["stopped","stop","opened","open"],
+      name: "When + อดีต, อดีต",
+      lesson: ["สองเหตุการณ์เกิดต่อกันในอดีต ใช้ Past Simple ทั้งสองฝั่ง <em>opened</em> กับ <em>stopped</em> (stop ต้องซ้ำ p ก่อนเติม ed)",
+               "ถ้าขึ้นต้นด้วย <em>When</em> ให้คั่นกลางด้วยลูกน้ำ ถ้าย้าย when ไปไว้กลางประโยคก็ไม่ต้องมีลูกน้ำ ความหมายเท่ากัน"] }
+  ]
+},
+{ id: "beep-cat", level: "A2", genre: "การ์ตูน", tags: ["เทคโนโลยี","สัตว์","ตลก","อนิเมะ / การ์ตูน"],
+  title: "บิปกับแมวส้ม", hue: 28,
+  moral: { en: "To make a new friend, we sometimes need to change a little.", th: "การจะได้เพื่อนใหม่ บางครั้งเราก็ต้องปรับตัวเองบ้างนิดหน่อย" },
+  cast: [["บิป","Beep","m"],["มิว","Miu","cat"]],
+  lines: [
+    { th: "บิปเป็นหุ่นยนต์ตัวเล็กที่ทำงานในร้านกาแฟ", tense: "ปัจจุบัน",
+      refs: ["Beep is a small robot that works in a coffee shop.","Beep is a little robot that works in a coffee shop.","Beep is a small robot who works in a coffee shop.","Beep is a small robot working in a coffee shop.","Beep is a small robot that works in a cafe.","Beep is a small robot that works at a coffee shop."],
+      vocab: [["หุ่นยนต์","robot"],["ร้านกาแฟ","coffee shop / cafe"]], vwords: ["robot","coffee","shop","cafe"],
+      name: "Present Simple กับ that ขยายคำนาม",
+      lesson: ["เรื่องที่เป็นความจริงทั่วไปของตัวละคร ใช้ Present Simple ประธานเป็นสิ่งเดียว กริยาจึงเป็น <em>is</em> และ <em>works</em> (เติม s)",
+               "คำว่า “ที่” ซึ่งขยายคำนามข้างหน้า ใช้ <em>that</em> หรือ <em>who</em> ต่อท้ายคำนามนั้นได้เลย <em>a small robot that works…</em> ส่วนทำงาน “ใน” ร้าน ใช้ <em>in</em> หรือ <em>at</em> ก็ได้"] },
+    { th: "ทุกเช้า เขาเห็นแมวสีส้มตัวหนึ่งนั่งอยู่หน้าร้าน", tense: "ปัจจุบัน",
+      refs: ["Every morning, he sees an orange cat sitting in front of the shop.","Every morning he sees an orange cat sitting in front of the shop.","Every morning, he sees an orange cat sitting outside the shop.","He sees an orange cat sitting in front of the shop every morning."],
+      vocab: [["หน้าร้าน","in front of the shop"],["นั่งอยู่","sitting"]], vwords: ["front","sitting","outside"],
+      name: "see + สิ่งที่เห็น + V-ing",
+      lesson: ["ทำซ้ำทุกเช้าเป็นนิสัย จึงใช้ Present Simple <em>he sees</em> (เขาคนเดียว เติม s)",
+               "เห็นอะไร “กำลังทำ” อยู่ ให้วางสิ่งที่เห็นก่อนแล้วตามด้วยกริยาเติม ing <em>an orange cat sitting</em> และ orange ขึ้นต้นด้วยเสียงสระ จึงใช้ <em>an</em>"] },
+    { th: "วันหนึ่ง บิปเอาปลาไปให้มัน", tense: "อดีต",
+      refs: ["One day, Beep gave it a fish.","One day Beep gave it a fish.","One day, Beep brought it a fish.","One day, Beep gave a fish to it.","One day, Beep brought a fish to it."],
+      vocab: [["เอา...ไปให้","give / bring (อดีต gave / brought)"],["ปลา","fish"]], vwords: ["gave","give","brought","bring","fish"],
+      name: "One day เปิดเหตุการณ์ในอดีต",
+      lesson: ["<em>One day</em> บอกว่าเรื่องเกิดขึ้นไปแล้ว กริยาจึงเป็นอดีต give กลายเป็น <em>gave</em> และ bring กลายเป็น <em>brought</em> ทั้งคู่เปลี่ยนรูปเอง ไม่เติม ed",
+               "สัตว์ที่ยังไม่ได้เรียกชื่อ ใช้ <em>it</em> แทน “มัน” และวางผู้รับก่อนของได้เลย <em>gave it a fish</em>"] },
+    { th: "แต่แมวกลัวเสียงของเขา", tense: "อดีต",
+      refs: ["But the cat was afraid of his voice.","But the cat was scared of his voice.","But the cat was frightened of his voice.","But the cat was afraid of his sound."],
+      vocab: [["กลัว","afraid of / scared of"],["เสียง","voice"]], vwords: ["afraid","scared","frightened","voice"],
+      name: "be afraid of",
+      lesson: ["“กลัว” ในภาษาอังกฤษเป็นคำบอกลักษณะ ไม่ใช่กริยา จึงต้องมี be นำหน้า เรื่องเป็นอดีตเลยเป็น <em>was afraid</em>",
+               "กลัว “อะไร” ต้องมี <em>of</em> ตามมาเสมอ <em>afraid of his voice</em> และแมวตัวนี้พูดถึงไปแล้ว จึงใช้ <em>the cat</em>"] },
+    { th: "บิปจึงฝึกพูดเบา ๆ", tense: "อดีต",
+      refs: ["So Beep learned to speak softly.","So Beep learned to talk softly.","So Beep learned to speak quietly.","So Beep learnt to speak softly.","So Beep practiced speaking softly.","So Beep practised speaking softly."],
+      vocab: [["ฝึก","learn to + กริยา / practice + V-ing"],["เบา ๆ","softly / quietly"]], vwords: ["learned","learnt","learn","practiced","practised","practice","softly","quietly"],
+      name: "So + อดีต และคำที่ลงท้าย -ly",
+      lesson: ["<em>So</em> ขึ้นต้นประโยคแปลว่า “จึง” บอกผลของประโยคก่อนหน้า กริยายังเป็นอดีต <em>learned to speak</em> หรือ <em>practiced speaking</em>",
+               "พูด “อย่างเบา” เป็นคำขยายกริยา ให้เติม ly ท้ายคำ soft จึงกลายเป็น <em>softly</em>"] },
+    { th: "ตอนนี้ มิวมาหาเขาทุกวัน", tense: "ปัจจุบัน",
+      refs: ["Now Miu comes to see him every day.","Now, Miu comes to see him every day.","Now Miu visits him every day.","Now, Miu visits him every day.","Now Miu comes to him every day."],
+      vocab: [["มาหา","come to see / visit"],["ทุกวัน","every day"]], vwords: ["comes","come","visits","visit"],
+      name: "every day กับ Present Simple",
+      lesson: ["ตอนนี้กลายเป็นนิสัยที่ทำทุกวัน จึงกลับมาใช้ Present Simple มิวตัวเดียว กริยาต้องเติม s <em>comes</em> หรือ <em>visits</em>",
+               "<em>every day</em> ที่แปลว่าทุกวัน เขียนแยกสองคำ ถ้าเขียนติดกันเป็น everyday จะแปลว่า “ธรรมดา ประจำวัน” ซึ่งเป็นอีกความหมาย"] }
+  ]
+},
+{ id: "mars-letter", level: "A2", genre: "เรื่องสั้น", tags: ["วิทยาศาสตร์ / อวกาศ","ผจญภัย","ลึกลับ / สืบสวน"],
+  title: "จดหมายบนดาวอังคาร", hue: 212,
+  moral: { en: "Even when we are far from everyone, we are never truly alone.", th: "แม้จะอยู่ห่างไกลจากทุกคน เราก็ไม่ได้อยู่ตัวคนเดียวจริง ๆ" },
+  cast: [["นัท","Nat","f"]],
+  lines: [
+    { th: "นัทเป็นนักบินอวกาศคนแรกบนดาวอังคาร", tense: "ปัจจุบัน",
+      refs: ["Nat is the first astronaut on Mars.","Nat is the very first astronaut on Mars.","Nat is the first astronaut on the planet Mars."],
+      vocab: [["นักบินอวกาศ","astronaut"],["ดาวอังคาร","Mars"]], vwords: ["astronaut","mars"],
+      name: "the first และชื่อดาวเคราะห์",
+      lesson: ["คำบอกลำดับอย่าง “คนแรก” มีได้คนเดียว จึงใช้ <em>the</em> นำหน้าเสมอ <em>the first astronaut</em>",
+               "ชื่อดาวเคราะห์เป็นชื่อเฉพาะ ขึ้นต้นด้วยตัวใหญ่และไม่ต้องมี the ส่วน “บน” ดาว ใช้ <em>on</em> เพราะอยู่บนพื้นผิว <em>on Mars</em>"] },
+    { th: "เธออยู่ที่นั่นคนเดียวมาสามเดือนแล้ว", tense: "ปัจจุบัน · Present Perfect", tkey: "ปัจจุบัน",
+      refs: ["She has been there alone for three months.","She has lived there alone for three months.","She has been there by herself for three months.","She has been living there alone for three months.","She's been there alone for three months."],
+      vocab: [["คนเดียว","alone / by herself"],["มา...แล้ว","has been ... for"]], vwords: ["alone","herself"],
+      name: "Present Perfect กับ for",
+      lesson: ["เรื่องที่เริ่มในอดีตและยังเป็นอยู่จนถึงตอนนี้ ใช้ <em>has</em> + กริยาช่อง 3 She เป็นคนเดียวจึงใช้ has <em>has been</em> หรือ <em>has lived</em>",
+               "บอกว่านานแค่ไหน ใช้ <em>for</em> ตามด้วยช่วงเวลา <em>for three months</em> และ “คนเดียว” ใช้ <em>alone</em> หรือ <em>by herself</em>"] },
+    { th: "เช้านี้ เธอพบจดหมายฉบับหนึ่งอยู่หน้าประตู", tense: "อดีต",
+      refs: ["This morning, she found a letter in front of the door.","This morning she found a letter in front of the door.","This morning, she found a letter at the door.","She found a letter in front of the door this morning.","This morning, she found a letter outside the door."],
+      vocab: [["พบ","find (อดีต found)"],["จดหมาย","letter"]], vwords: ["found","find","letter"],
+      name: "This morning กับ Past Simple",
+      lesson: ["“เช้านี้” ที่ผ่านไปแล้ว เล่าด้วยอดีต find เปลี่ยนรูปเองเป็น <em>found</em>",
+               "จดหมายเพิ่งพูดถึงครั้งแรก ใช้ <em>a letter</em> ส่วน “หน้าประตู” ใช้ <em>in front of the door</em> หรือสั้น ๆ ว่า <em>at the door</em>"] },
+    { th: "ไม่มีใครรู้ว่าใครเป็นคนเขียน", tense: "อดีต",
+      refs: ["Nobody knew who wrote it.","No one knew who wrote it.","Nobody knew who had written it.","No one knew who had written it.","Nobody knew who wrote the letter."],
+      vocab: [["ไม่มีใคร","nobody / no one"],["เขียน","write (อดีต wrote)"]], vwords: ["nobody","wrote","written"],
+      name: "Nobody และคำถามที่ซ้อนอยู่ในประโยค",
+      lesson: ["<em>Nobody</em> มีความหมายปฏิเสธอยู่แล้ว ห้ามเติม not ซ้ำ เขียนแค่ <em>Nobody knew</em> (know เป็นอดีตว่า knew)",
+               "“ใครเป็นคนเขียน” ที่อยู่ในประโยค เรียงแบบประโยคธรรมดา <em>who wrote it</em> ไม่ต้องมี did"] },
+    { th: "ในจดหมายเขียนว่า “พรุ่งนี้เราจะไปหาคุณ”", tense: "อดีต · ในคำพูดเป็นอนาคต", tkey: "อดีต",
+      refs: ["The letter said, \"We will visit you tomorrow.\"","The letter said, \"We'll visit you tomorrow.\"","The letter said, \"Tomorrow we will visit you.\"","The letter said, \"We will come to see you tomorrow.\"","It said, \"We will visit you tomorrow.\""],
+      vocab: [["ไปหา","visit / come to see"],["พรุ่งนี้","tomorrow"]], vwords: ["visit","tomorrow"],
+      name: "will บอกอนาคต และ The letter said",
+      lesson: ["ภาษาไทยบอกว่าจดหมาย “เขียนว่า” แต่ภาษาอังกฤษนิยมใช้ <em>said</em> กับจดหมายหรือป้าย <em>The letter said</em>",
+               "ในเครื่องหมายคำพูดเป็นเรื่องที่จะเกิด ใช้ <em>will</em> + กริยารูปปกติ <em>We will visit you</em>"] },
+    { th: "นัทยิ้ม เพราะเธอจะไม่เหงาอีกต่อไป", tense: "อดีต · มองไปอนาคต", tkey: "อนาคต",
+      refs: ["Nat smiled because she would not be lonely anymore.","Nat smiled because she wouldn't be lonely anymore.","Nat smiled because she would not be lonely any more.","Nat smiled because she would no longer be lonely.","Nat smiled because she won't be lonely anymore.","Nat smiled because she will not be lonely anymore."],
+      vocab: [["เหงา","lonely"],["อีกต่อไป","anymore / no longer"]], vwords: ["lonely","anymore","longer"],
+      name: "would คือ will ในเรื่องเล่าอดีต",
+      lesson: ["นัทยิ้มไปแล้ว เป็นอดีต <em>smiled</em> สิ่งที่จะเกิดหลังจากนั้นเมื่อมองจากอดีต ใช้ <em>would</em> แทน will",
+               "“ไม่...อีกต่อไป” ใช้ <em>not ... anymore</em> วางท้ายประโยค หรือ <em>no longer</em> วางหน้าคำที่ขยาย"] }
+  ]
+}];
+let STORY = STORIES[0];
+/* คะแนนเต็มต่อข้อ สูงขึ้นตามระดับ */
+const LEVELS = [["A1","เริ่มต้น",10,"#20b39b","#7fe6d6"],["A2","พื้นฐาน",20,"#3d8bff","#9fd0ff"],["B1","กลาง",30,"#7f5cf0","#c9b6ff"],
+                ["B2","กลางสูง",40,"#ee4d95","#ffb3d3"],["C1","สูง",50,"#f08a2c","#ffd59a"],["C2","เชี่ยวชาญ",60,"#5a4ad8","#b4a8ff"]];
+const MAXPER = Object.fromEntries(LEVELS.map(l => [l[0], l[2]]));
+
+/* ───── small artwork ───── */
+const star = (cx,cy,r) => `M${cx} ${cy-r}Q${cx+r*.16} ${cy-r*.16} ${cx+r} ${cy}Q${cx+r*.16} ${cy+r*.16} ${cx} ${cy+r}Q${cx-r*.16} ${cy+r*.16} ${cx-r} ${cy}Q${cx-r*.16} ${cy-r*.16} ${cx} ${cy-r}z`;
+function mascot(expr="happy", cls=""){
+  const glow = "#8ff5e4";
+  const eyes = {
+    happy:`<path d="M43 57q5-7 10 0M67 57q5-7 10 0" stroke="${glow}" stroke-width="3.600" fill="none" stroke-linecap="round"/>`,
+    wow:`<path d="${star(48,55,7)}" fill="#ffe38a"/><path d="${star(72,55,7)}" fill="#ffe38a"/>`,
+    calm:`<ellipse cx="48" cy="55" rx="4.200" ry="5.600" fill="${glow}"/><ellipse cx="72" cy="55" rx="4.200" ry="5.600" fill="${glow}"/><circle cx="49.500" cy="53" r="1.500" fill="#fff"/><circle cx="73.500" cy="53" r="1.500" fill="#fff"/>`,
+    sleep:`<path d="M43 56q5 4 10 0M67 56q5 4 10 0" stroke="${glow}" stroke-width="3" fill="none" stroke-linecap="round"/>`
+  }[expr];
+  const mouth = expr==="wow" ? `<ellipse cx="60" cy="66" rx="4.500" ry="3.600" fill="${glow}"/>` :
+                expr==="sleep" ? `<path d="M57 66h6" stroke="${glow}" stroke-width="2.600" stroke-linecap="round"/>` :
+                `<path d="M54 64q6 6 12 0" stroke="${glow}" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+  const wave = expr==="happy" || expr==="wow";
+  return `<svg class="mascot ${cls}" viewBox="0 0 120 132" aria-hidden="true">
+    <ellipse cx="60" cy="125" rx="28" ry="5" fill="rgba(120,95,210,.18)"/>
+    <path d="M60 25V13" stroke="#b18cff" stroke-width="3" stroke-linecap="round"/><path d="${star(60,9,8)}" fill="url(#g-star)"/>
+    <circle cx="23" cy="58" r="9.500" fill="#ff9cc8" stroke="#fff" stroke-width="2.500"/><circle cx="97" cy="58" r="9.500" fill="#ff9cc8" stroke="#fff" stroke-width="2.500"/>
+    ${wave ? `<path d="M93 80q14-6 16-20" stroke="#a58bff" stroke-width="8" fill="none" stroke-linecap="round"/><circle cx="109" cy="59" r="6" fill="#d9ccff" stroke="#fff" stroke-width="2"/>`
+           : `<path d="M95 84q8 6 6 14" stroke="#a58bff" stroke-width="8" fill="none" stroke-linecap="round"/>`}
+    <path d="M25 84q-8 6-6 14" stroke="#a58bff" stroke-width="8" fill="none" stroke-linecap="round"/>
+    <ellipse cx="47" cy="110" rx="10" ry="7" fill="#8f74f0" stroke="#fff" stroke-width="2"/><ellipse cx="73" cy="110" rx="10" ry="7" fill="#8f74f0" stroke="#fff" stroke-width="2"/>
+    <rect x="25" y="25" width="70" height="82" rx="32" fill="url(#g-body)" stroke="#fff" stroke-width="3.500"/>
+    <path d="M36 34q10-6 22-6" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" opacity=".7"/>
+    <rect x="34" y="40" width="52" height="36" rx="16" fill="url(#g-screen)"/>${eyes}${mouth}
+    <ellipse cx="38" cy="86" rx="6" ry="3.600" fill="#ff9cc8" opacity=".85"/><ellipse cx="82" cy="86" rx="6" ry="3.600" fill="#ff9cc8" opacity=".85"/>
+    <path d="M50 92q10 7 20 0v8q-10 6-20 0z" fill="#fff" opacity=".9"/><path d="M60 95v8" stroke="#c9b6ff" stroke-width="1.500"/>
+  </svg>`;
+}
+function coverScene(){
+  const arcs = [[92,"#ffb8cf"],[82,"#ffd9a0"],[72,"#fff3a6"],[62,"#c3f2dc"],[52,"#bfe0ff"],[42,"#dcc8ff"]]
+    .map(([r,c]) => `<path d="M${100-r} 178A${r} ${r} 0 0 1 ${100+r} 178" stroke="${c}" stroke-width="10" fill="none"/>`).join("");
+  const cl = (x,y,s) => `<g transform="translate(${x} ${y}) scale(${s})" fill="#fff"><circle cx="0" cy="0" r="12"/><circle cx="16" cy="-7" r="16"/><circle cx="34" cy="0" r="12"/><rect x="0" y="-2" width="34" height="14" rx="7"/></g>`;
+  const drops = [[24,92],[40,104],[32,120],[150,74],[166,86],[158,104],[176,116],[60,90],[18,138],[184,140]].map(([x,y]) => `<path d="M${x} ${y}q4 6 0 9q-4-3 0-9z" fill="#8cc4ff"/>`).join("");
+  let awning = "";
+  for(let k=0;k<7;k++){ const x = 64 + k*12.57; awning += `<rect x="${x.toFixed(2)}" y="122" width="12.57" height="12" fill="${k%2?"#fff":"#ff8cc0"}"/><circle cx="${(x+6.28).toFixed(2)}" cy="134" r="6.28" fill="${k%2?"#fff":"#ff8cc0"}"/>`; }
+  const books = [["#ff8cc0",8],["#62b0ff",11],["#ffcf5a",7],["#4fd1bd",10],["#a98bff",9]].map(([c,h],k) => `<rect x="${80+k*6}" y="${172-h}" width="5" height="${h}" rx="1.200" fill="${c}"/>`).join("");
+  return `<svg class="scene" viewBox="0 0 200 240" aria-hidden="true"><g clip-path="url(#c-arch)">
+    <rect width="200" height="240" fill="url(#g-sky)"/><g opacity=".85">${arcs}</g>${cl(18,76,1)}${cl(140,58,.9)}${cl(150,104,.55)}${drops}
+    <path d="M14 210q50-12 92-3t94-5V240H0z" fill="#c8f1e3"/><path d="M0 222q60-8 110 0t90-2V240H0z" fill="#b2ead8"/>
+    <path d="M60 124L108 92l48 32z" fill="#b18cff" stroke="#fff" stroke-width="2.500" stroke-linejoin="round"/>
+    <rect x="68" y="122" width="80" height="86" rx="4" fill="#fff7ec" stroke="#eadcff" stroke-width="2"/>
+    <rect x="86" y="100" width="44" height="14" rx="7" fill="#fff" stroke="#ffc2dc" stroke-width="1.500"/><text x="108" y="110.500" text-anchor="middle" font-family="Fredoka,sans-serif" font-size="8.500" font-weight="700" fill="#7a5ae0">BOOKS</text>
+    ${awning}<rect x="74" y="148" width="40" height="30" rx="9" fill="#ffe7a3" stroke="#fff" stroke-width="3"/>${books}<path d="M76 172h36" stroke="#e8b85a" stroke-width="1.500"/>
+    <path d="M122 208v-38a11 11 0 0 1 22 0v38z" fill="#6fd8c6" stroke="#fff" stroke-width="2.500"/><circle cx="139" cy="190" r="2" fill="#fff"/>
+    <path d="M28 176a18 13 0 0 1 36 0q-4.500-4-9 0q-4.500-4-9 0q-4.500-4-9 0q-4.500-4-9 0z" fill="#ff8cc0" stroke="#fff" stroke-width="1.500"/>
+    <path d="M46 176v20a3 3 0 0 1-6 0" fill="none" stroke="#a98bff" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="40" cy="188" r="6.500" fill="#ffe2cf"/><path d="M33.500 187a6.500 6.500 0 0 1 13 0q-6.500-4-13 0z" fill="#5a4a8a"/>
+    <circle cx="37.500" cy="189" r="1" fill="#3a3270"/><circle cx="42.500" cy="189" r="1" fill="#3a3270"/>
+    <path d="M40 194l-8 15h16z" fill="#ffcf5a" stroke="#fff" stroke-width="1.200" stroke-linejoin="round"/><path d="M36 209v4M44 209v4" stroke="#ff8cc0" stroke-width="3" stroke-linecap="round"/>
+    <g fill="#fff"><path d="${star(70,64,5)}"/><path d="${star(128,40,4)}"/><path d="${star(178,128,4)}"/></g></g>
+    <path d="M14 236V100a86 86 0 0 1 172 0v136z" fill="none" stroke="#fff" stroke-width="5"/><path d="M14 236V100a86 86 0 0 1 172 0v136z" fill="none" stroke="url(#g-holo)" stroke-width="2.500"/>
+    <path d="${star(100,10,9)}" fill="#fff"/><path d="${star(100,10,5)}" fill="url(#g-star)"/></svg>`;
+}
+const TWINKLE = pos => `<svg class="twinkle" style="${pos}" viewBox="0 0 22 22"><path d="${star(11,11,10)}" fill="#fff"/><path d="${star(11,11,5)}" fill="url(#g-star)"/></svg>`;
+const STAR5 = on => `<svg viewBox="0 0 24 24"><path d="M12 2.500l2.900 6.100 6.600.8-4.900 4.600 1.300 6.600L12 17.300 6.100 20.600l1.300-6.600L2.500 9.400l6.600-.8z" fill="${on?"url(#g-star)":"#ebe5fb"}" stroke="#fff" stroke-width="1.500" stroke-linejoin="round"/></svg>`;
+
+/* ───── state ───── */
+let S = { screen:"meadow", modal:false, view:"closed", level:"A2", spread:0, idx:0, phase:"write", text:"", clued:[], vocabUsed:false, results:[], cam:"closed", justDone:-1 };
+let L = {W:0,H:0,pw:340,ph:600,fits:false}, busy = false;
+/* MODE "play" = translating today's story; "read" = reading a finished book (RB) from the library */
+let MODE = "play", RB = null;
+const LKEY = "trans-taller.library";
+const RENAMED = { "ร้านหนังสือที่เปิดเฉพาะตอนฝนตก": ["rain-bookshop", "ร้านหนังสือยามฝนตก"], "หุ่นยนต์ที่อยากเป็นเพื่อนกับแมว": ["beep-cat", "บิปกับแมวส้ม"], "จดหมายบนดาวอังคาร": ["mars-letter", "จดหมายบนดาวอังคาร"] };
+function loadLib(){
+  let a = [];
+  try{ const x = JSON.parse(localStorage.getItem(LKEY)); if(Array.isArray(x)) a = x; }catch(e){}
+  for(const b of a){ const r = RENAMED[b.title]; if(r){ b.storyId = b.storyId || r[0]; b.title = r[1]; } }
+  return a;
+}
+function saveLib(){ try{ localStorage.setItem(LKEY, JSON.stringify(LIB)); }catch(e){} }
+let LIB = loadLib();
+const WKEY = "trans-taller.wallet";
+function loadWallet(){
+  let w = null; try{ w = JSON.parse(localStorage.getItem(WKEY)); }catch(e){}
+  if(!w || w.earned == null) w = { earned: LIB.reduce((a,b) => a + (b.total || 0), 0), spent: 0, cases: 1 };
+  w.cases = Math.max(w.cases || 1, Math.ceil(LIB.length / 6), 1);
+  return w;
+}
+function saveWallet(){ try{ localStorage.setItem(WKEY, JSON.stringify(WAL)); }catch(e){} }
+let WAL = loadWallet();
+const points = () => WAL.earned - WAL.spent;
+const capacity = () => WAL.cases * 6;
+const MAX_CASES = 8;
+const upgradeCost = () => 150 + 150 * WAL.cases;
+const B = () => MODE === "read" && RB ? RB : STORY;
+
+const $ = id => document.getElementById(id);
+const norm = w => w.toLowerCase().replace(/[’‘]/g,"'").replace(/[^a-z0-9']/g,"");
+const toks = s => s.split(/\s+/).map(norm).filter(Boolean);
+const words = s => s.trim().split(/\s+/).filter(Boolean);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const maxPer = () => MAXPER[STORY.level];
+const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+const N = () => STORY.lines.length;
+
+function lcsPairs(a, b){
+  const n=a.length, m=b.length, d=Array.from({length:n+1},()=>new Array(m+1).fill(0));
+  for(let i=n-1;i>=0;i--) for(let j=m-1;j>=0;j--) d[i][j] = a[i]===b[j] ? d[i+1][j+1]+1 : Math.max(d[i+1][j], d[i][j+1]);
+  const pairs=[]; let i=0,j=0;
+  while(i<n && j<m){ if(a[i]===b[j]){pairs.push([i,j]);i++;j++;} else if(d[i+1][j]>=d[i][j+1]) i++; else j++; }
+  return pairs;
+}
+function grade(line, text, clued, vocabUsed, max){
+  const user = toks(text);
+  const noScore = new Set(clued.concat(vocabUsed ? line.vwords : []));
+  let best = null;
+  for(const ref of line.refs){
+    const r = toks(ref), pairs = lcsPairs(r, user);
+    const earned = pairs.filter(([i]) => !noScore.has(r[i])).length;
+    const pts = Math.round(max * earned / r.length);
+    if(!best || pts > best.pts || (pts === best.pts && pairs.length > best.pairs.length)) best = {pts, ref, pairs};
+  }
+  const hit = new Set(best.pairs.map(p => p[1]));
+  best.userMarks = user.map((w,j) => !hit.has(j) ? "miss" : (noScore.has(w) ? "clue" : "hit"));
+  return best;
+}
+function cheer(q){
+  if(q>=.9) return "สวยมาก เขียนได้แทบเหมือนเฉลยเลย";
+  if(q>=.6) return "ใจความมาแล้ว เหลือเก็บรายละเอียดอีกนิดเดียว";
+  if(q>=.3) return "ได้คำสำคัญมาแล้ว ข้อถัดไปเอาหลักนี้ไปลองใช้ต่อ";
+  return "ข้อนี้ได้เรียนของใหม่ เก็บหลักข้างล่างไว้ใช้ข้อถัดไป";
+}
+
+/* ───── pages: spread 0 = cover inside + title, spread k = question k (left) + answer k (right), last = story + score ───── */
+/* animals are drawn, so they show the same on every device */
+/* book colours: every story has its own hue; the CEFR level sets how deep the shade is,
+   so the same story at the same level always looks the same */
+const storyOf = b => b.story || STORIES.find(s => s.id === b.storyId) || STORIES.find(s => s.title === b.title);
+function bookHue(b){ if(b.hue != null) return b.hue; const st = storyOf(b); if(st && st.hue != null) return st.hue; let h = 0; for(const ch of b.title) h = (h*31 + ch.codePointAt(0)) % 360; return h; }
+const LV_LIGHT = { A1:68, A2:62, B1:56, B2:50, C1:44, C2:38 };
+function bookColors(b){ const h = bookHue(b), L = LV_LIGHT[b.level] || 60; return [`hsl(${h}, 72%, ${L - 16}%)`, `hsl(${h}, 88%, ${Math.min(88, L + 12)}%)`]; }
+const ANIMAL_ART = {
+  cat: `<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3.500 3.500L8 8h8l4.500-4.500V13a8.500 7.500 0 0 1-17 0z" fill="#ffa24c" stroke="#d9772a" stroke-width=".8" stroke-linejoin="round"/><path d="M5 6l2 2M19 6l-2 2" stroke="#ffd1a6" stroke-width="1.400" stroke-linecap="round"/><circle cx="9" cy="12.500" r="1.500" fill="#3a2a5e"/><circle cx="15" cy="12.500" r="1.500" fill="#3a2a5e"/><circle cx="9.500" cy="12" r=".5" fill="#fff"/><circle cx="15.500" cy="12" r=".5" fill="#fff"/><path d="M11 15h2l-1 1.100z" fill="#ff5e8a"/><path d="M12 16.100q-.9 1.400-2.300 1M12 16.100q.9 1.400 2.300 1" stroke="#3a2a5e" stroke-width=".8" fill="none" stroke-linecap="round"/><path d="M2.500 14.500l4-.5M2.500 16.500l4-.8M21.500 14.500l-4-.5M21.500 16.500l-4-.8" stroke="#7a4a1f" stroke-width=".6" stroke-linecap="round"/></svg>`
+};
+const ANIMALS = { cat:["🐱","แมว"], dog:["🐶","สุนัข"], bird:["🐦","นก"], rabbit:["🐰","กระต่าย"], fish:["🐟","ปลา"], fox:["🦊","จิ้งจอก"], bear:["🐻","หมี"] };
+function castKind(c){
+  if(c[2]) return c[2];
+  for(const st of STORIES) for(const x of st.cast) if(x[1] === c[1] && x[2]) return x[2];
+  return "";
+}
+function castIcon(c){
+  const k = castKind(c);
+  if(k === "m") return `<i class="g m" title="ผู้ชาย" aria-label="ผู้ชาย">♂</i>`;
+  if(k === "f") return `<i class="g f" title="ผู้หญิง" aria-label="ผู้หญิง">♀</i>`;
+  if(ANIMALS[k]) return `<i class="g an" title="${ANIMALS[k][1]}" aria-label="${ANIMALS[k][1]}">${ANIMAL_ART[k] || ANIMALS[k][0]}</i>`;
+  return `<i>${esc((c[1]||"?")[0])}</i>`;
+}
+const castHTML = (center) => `<div class="cast"${center?' style="justify-content:center"':""}><span class="k">ตัวละคร</span>${B().cast.map(c => `<span class="who">${castIcon(c)}${esc(c[0])} <b>${esc(c[1])}</b></span>`).join("")}</div>`;
+const pipsHTML = () => `<span class="pips">${STORY.lines.map((_,i)=>`<i class="pip ${S.results[i]?"done":i===S.idx?"now":""}"></i>`).join("")}</span>`;
+function coverHTML(){
+  const b = B();
+  return `<span class="hinge"></span><span class="foilframe"></span>
+    ${TWINKLE("left:40px;top:22px")}${TWINKLE("right:22px;top:22px")}${TWINKLE("left:40px;bottom:22px")}${TWINKLE("right:22px;bottom:22px")}
+    <span class="body"><span class="series">TRANS-TALER</span>${coverScene()}
+      <span class="plate"><h1>${esc(b.title)}</h1><span class="tiny">${esc(b.genre)} · ตัวละคร ${b.cast.map(c=>esc(c[1])).join(", ")}</span></span>
+      <span class="seal">${esc(b.level)}</span></span>`;
+}
+const endpaperHTML = () => {
+  const no = MODE === "read" ? LIB.indexOf(RB) + 1 : LIB.length + 1;
+  const close = MODE === "read" ? `<button class="btn ghost small" data-act="r-close-front">◀ ปิดปกหน้า</button>` : "";
+  return `<div class="endpaper"><div class="ex"><span class="fine">หนังสือเล่มนี้เป็นของ</span><b>ห้องสมุดแห่งเรื่องราว</b><span class="fine">เล่มที่ ${no} · ${esc(B().level)}</span>${close}</div></div>`;
+};
+function backCoverHTML(){
+  const b = B(), no = MODE === "read" ? LIB.indexOf(RB) + 1 : LIB.length + 1;
+  const moral = b.moral || (storyOf(b) || {}).moral;
+  const stars = b.total != null ? Math.max(1, Math.round(b.total / b.max * 5)) : 0;
+  return `<span class="hinge"></span><span class="foilframe"></span>
+    ${TWINKLE("left:22px;top:22px")}${TWINKLE("right:40px;top:22px")}${TWINKLE("left:22px;bottom:22px")}${TWINKLE("right:40px;bottom:22px")}
+    <span class="body">
+      <span class="series">TRANS-TALER</span>
+      <span class="bc-kick">ข้อคิดจากเรื่อง</span>
+      ${moral ? `<span class="bc-moral">${esc(moral.en)}</span><span class="bc-moral-th">${esc(moral.th)}</span>` : ""}
+      <span class="plate"><h1>${esc(b.title)}</h1><span class="tiny">${esc(b.level)} · เล่มที่ ${no}</span></span>
+      ${stars ? `<span class="stars" aria-label="${stars} จาก 5 ดาว">${[0,1,2,3,4].map(k => STAR5(k < stars)).join("")}</span><span class="bc-score">${b.total} / ${b.max} คะแนน</span>` : ""}
+      <span class="bc-small">แตะที่ปกเพื่อเปิดอ่านอีกครั้ง</span>
+    </span>`;
+}
+function titleHTML(){
+  return `<div class="pg-in"><div class="center">
+    <div class="kicker">เรื่องของวันนี้${P ? ` สำหรับ ${esc(P.name)}` : ""}</div>${mascot("happy","big")}
+    <h1>${esc(STORY.title)}</h1>
+    <div class="row mid badges"><span class="badge">${esc(STORY.level)}</span><span class="badge">${esc(STORY.genre)}</span></div>
+    ${castHTML(true)}
+    <div class="infobox"><div><b>${N()}</b><small>ข้อ</small></div><div><b>${maxPer()}</b><small>คะแนนต่อข้อ</small></div><div><b>${N()*maxPer()}</b><small>เต็มทั้งเรื่อง</small></div></div>
+    <p class="fine">หน้าซ้ายเป็นโจทย์ หน้าขวาเป็นเฉลย</p>
+    <button class="btn" data-act="begin">พลิกไปข้อแรก ▶</button>
+  </div><div class="pagefoot">1</div></div>`;
+}
+function questionHTML(i){
+  const line = STORY.lines[i], r = S.results[i];
+  const head = `<div class="pagehead"><span class="qno">โจทย์ข้อ ${i+1}<small> / ${N()}</small></span>${pipsHTML()}</div>`;
+  const prev = i > 0 ? `<p class="prev"><span>ก่อนหน้านี้</span>${esc(STORY.lines[i-1].th)}</p>` : "";
+  const box = `<div class="linebox"><span class="tense" data-t="${esc(line.tkey||line.tense)}">${esc(line.tense)}</span><p class="thai">${esc(line.th)}</p></div>`;
+  const foot = `<div class="pagefoot">${2*i+2}</div>`;
+  if(r) return `<div class="pg-in">${head}${castHTML()}${prev}${box}
+    <div class="written"><div class="lab">MY ENGLISH</div><p class="hand">${r.text.trim() ? esc(r.text.trim()) : "ยังไม่ได้เขียน"}</p>
+      <div class="sticker ${S.justDone===i?"pop":""}"><b>${r.pts}</b><small>/ ${maxPer()}</small></div></div>
+    <p class="fine">ดูเฉลยและหลักของประโยคได้ที่หน้าขวา ▶</p>${foot}</div>`;
+  return `<div class="pg-in">${head}${castHTML()}${prev}${box}
+    <label class="lab" for="answer">MY ENGLISH</label>
+    <textarea id="answer" placeholder="Type your translation here" spellcheck="false" autocomplete="off">${esc(S.text)}</textarea>
+    <div class="cluebox" id="p-vocab" ${S.vocabUsed?"":"hidden"}>${line.vocab.map(([t,e])=>`${esc(t)} &nbsp;<b>${esc(e)}</b>`).join("<br>")}</div>
+    <p class="note" id="p-note" hidden></p>
+    <div class="row" style="gap:8px">
+      <button class="btn chip mint small" data-act="vocab" ${S.vocabUsed?"disabled":""}>Vocab clue</button>
+      <button class="btn chip small" data-act="next">Next word clue</button>
+    </div>
+    <p class="fine">คำที่ได้จาก clue ไม่นับคะแนน</p>
+    <div class="row end"><button class="btn" data-act="send">ส่งคำแปล ✦</button></div>${foot}</div>`;
+}
+function answerHTML(i){
+  const r = S.results[i], line = STORY.lines[i];
+  const head = `<div class="pagehead"><span class="qno">เฉลยข้อ ${i+1}</span><span class="lvchip ans">${esc(STORY.level)} · เต็ม ${maxPer()}</span></div>`;
+  const foot = `<div class="pagefoot">${2*i+3}</div>`;
+  if(!r) return `<div class="pg-in">${head}<div class="waiting">${mascot("sleep","")}<p class="w-t">เฉลยซ่อนอยู่ในหน้านี้</p><p class="fine">ส่งคำแปลที่หน้าซ้ายก่อน<br>แล้วเฉลยกับหลักของประโยคจะเปิดตรงนี้</p></div>${foot}</div>`;
+  const q = r.pts/maxPer(), last = i === N()-1;
+  const uw = words(r.text).filter(w => norm(w));
+  const yours = uw.length ? uw.map((w,k)=>`<span class="${r.marks[k]||"miss"}">${esc(w)}</span>`).join(" ") : `<span class="miss">ยังไม่ได้เขียน</span>`;
+  return `<div class="pg-in">${head}
+    <div class="scorebox"><div class="ring" style="--r:${q.toFixed(3)}"><span class="n">${r.pts}</span><span class="of">/ ${maxPer()}</span></div><p class="cheer">${cheer(q)}</p></div>
+    <div class="pair"><span class="tag me">ที่เขียนมา</span><p class="en">${yours}</p></div>
+    <div class="pair"><span class="tag ok">เฉลย</span><p class="en model">${esc(r.ref)}</p></div>
+    ${r.ai ? `<div class="aibox"><span class="tag ai">ครู AI</span>${r.ai.better && r.ai.better !== r.text.trim() ? `<p class="en">${esc(r.ai.better)}</p>` : ""}${r.ai.tip ? `<p class="tip">${esc(r.ai.tip)}</p>` : ""}</div>` : ""}
+    <p class="fine">แถบสีเหลือง คือคำที่ได้คะแนน · เส้นประ คือคำที่มาจาก clue</p>
+    <div class="lesson"><div class="kicker">หลักของประโยคนี้</div><h3>${esc(line.name)}</h3>${line.lesson.map(p=>`<p>${safeLesson(p)}</p>`).join("")}</div>
+    <div class="row end"><button class="btn" data-act="advance">${last ? "พลิกไปหน้าสรุปคะแนน ✦" : "พลิกไปข้อถัดไป ▶"}</button></div>${foot}</div>`;
+}
+function recapHTML(){
+  return `<div class="pg-in">
+    <div class="pagehead"><span class="qno">เรื่องเต็ม</span>${pipsHTML()}</div>
+    <p class="story">${STORY.lines.map(l=>esc(l.th)).join(" ")}</p>
+    <p class="story en">${STORY.lines.map(l=>esc(l.refs[0])).join(" ")}</p>
+    <div class="pagefoot">${2*N()+2}</div></div>`;
+}
+function summaryHTML(){
+  const p = 2*N()+3;
+  if(S.results.filter(Boolean).length < N()) return `<div class="pg-in"><div class="waiting">${mascot("sleep","mini")}<p class="w-t">สรุปคะแนน</p><p class="fine">หน้านี้จะเปิดเมื่อทำครบ ${N()} ข้อ</p></div><div class="pagefoot">${p}</div></div>`;
+  const tot = S.results.reduce((a,r)=>a+r.pts,0), max = N()*maxPer(), q = tot/max;
+  const stars = Math.max(1, Math.round(q*5));
+  const msg = q>=.8 ? "เล่าเรื่องนี้เป็นภาษาอังกฤษได้เองแล้ว" : q>=.5 ? "เกินครึ่งเรื่องเป็นฝีมือตัวเองล้วน ๆ" : "อ่านจบหนึ่งเรื่อง และได้หลักกลับไปครบทุกข้อ";
+  return `<div class="pg-in"><div class="center">
+    <div class="kicker">สรุปคะแนน</div>${mascot(q>=.6?"wow":"happy","")}
+    <div class="stars" aria-label="${stars} จาก 5 ดาว">${[0,1,2,3,4].map(k=>STAR5(k<stars)).join("")}</div>
+    <div><span class="total">${tot}</span><span class="fine" style="font-size:16px;font-weight:700"> / ${max}</span></div>
+    <p class="cheer">${msg}</p>
+    <div class="tally">${S.results.map((r,i)=>`<div>${r.pts}<small>ข้อ ${i+1}</small></div>`).join("")}</div>
+    <p class="fine">${S.replayOf != null ? "เล่นเล่มเดิมซ้ำ เก็บคะแนนสะสมเพิ่ม" : "เล่มนี้ขึ้นชั้นในห้องสมุดแห่งเรื่องราวแล้ว"} · ได้ +${tot} ⭐ ไว้อัปเกรดห้องสมุด</p>
+    <button class="btn" data-act="tolib">ไปดูเล่มนี้บนชั้น ✦</button>
+  </div><div class="pagefoot">${p}</div></div>`;
+}
+/* ───── phase 3: reading a book from the library ─────
+   page 0 = inside cover, 1 = title, 2..K+1 = story pages (two sentences each), K+2 = the end */
+const PER_PAGE = 2;
+const readChunks = () => { const out = []; for(let i=0;i<RB.lines.length;i+=PER_PAGE) out.push(RB.lines.slice(i,i+PER_PAGE)); return out; };
+/* page kinds in order; a picture page is slipped in when needed so the two full-story pages face each other */
+function readPages(){
+  const pages = ["endpaper", "title", ...readChunks().map((_, i) => "c" + i)];
+  if(pages.length % 2) pages.push("art");
+  pages.push("en", "th");
+  return pages;
+}
+const lastSpread = () => MODE === "read" ? Math.floor((readPages().length - 1) / 2) : N() + 1;
+const fmtDate = iso => { try{ return new Date(iso).toLocaleDateString("th-TH",{day:"numeric",month:"short",year:"numeric"}); }catch(e){ return ""; } };
+function readTitleHTML(){
+  const b = RB, q = b.total/b.max, stars = Math.max(1, Math.round(q*5)), canReplay = !!storyOf(b);
+  return `<div class="pg-in"><div class="center">
+    <div class="kicker">ห้องสมุดแห่งเรื่องราว</div>
+    <h1>${esc(b.title)}</h1>
+    <div class="row mid badges"><span class="badge">${esc(b.level)}</span><span class="badge">${esc(b.genre)}</span></div>
+    ${castHTML(true)}
+    <div class="stars" aria-label="${stars} จาก 5 ดาว">${[0,1,2,3,4].map(k=>STAR5(k<stars)).join("")}</div>
+    <div class="infobox"><div><b>${b.total}</b><small>คะแนนจาก ${b.max}</small></div><div><b>${b.lines.length}</b><small>ประโยค</small></div><div><b style="font-size:15px;line-height:1.9">${esc(fmtDate(b.date))}</b><small>วันที่เล่นจบ</small></div></div>
+    <p class="fine">ภาษาไทยอยู่บน ภาษาอังกฤษอยู่ล่าง</p>
+    <div class="row mid"><button class="btn ghost small" data-act="r-cam-left">◀ ปกใน</button><button class="btn" data-act="r-start">เริ่มอ่าน ▶</button></div>
+    ${canReplay ? `<button class="btn chip small" data-act="r-replay">เล่นเรื่องนี้อีกครั้งเพื่อเก็บคะแนน ✦</button>` : ""}
+  </div><div class="pagefoot">1</div></div>`;
+}
+function readPageHTML(p){
+  const pages = readPages(), kind = pages[p], side = p % 2 ? "R" : "L";
+  const back = side === "L" ? `<button class="btn ghost small" data-act="r-back-spread">◀ ย้อน</button>` : `<button class="btn ghost small" data-act="r-cam-left">◀ ย้อน</button>`;
+  const next = side === "L" ? `<button class="btn small" data-act="r-cam-right">หน้าถัดไป ▶</button>` : `<button class="btn small" data-act="r-turn">พลิกหน้า ▶</button>`;
+  if(kind === "endpaper") return endpaperHTML();
+  if(kind === "title") return readTitleHTML();
+  if(kind === undefined) return `<div class="pg-in"></div>`;
+  if(kind === "art") return `<div class="pg-in"><div class="center">${mascot("wow","big")}<h1>${esc(RB.title)}</h1><p class="fine">หน้าถัดไปเป็นเรื่องทั้งเรื่อง<br>ภาษาอังกฤษหน้าหนึ่ง ภาษาไทยอีกหน้าหนึ่ง</p></div>
+    <div class="rfoot">${back}<span class="pagefoot">${p}</span>${next}</div></div>`;
+  if(kind === "en") return `<div class="pg-in">
+    <div class="pagehead"><span class="qno">The Whole Story</span><span class="lvchip">${esc(RB.level)}</span></div>
+    <p class="story en">${RB.lines.map(l => esc(l.en)).join(" ")}</p>
+    <div class="rfoot">${back}<span class="pagefoot">${p}</span>${next}</div></div>`;
+  if(kind === "th") return `<div class="pg-in">
+    <div class="pagehead"><span class="qno">เรื่องทั้งเรื่อง</span><span class="lvchip">ภาษาไทย</span></div>
+    <p class="story">${RB.lines.map(l => esc(l.th)).join(" ")}</p>
+    <div class="row mid"><button class="btn ghost small" data-act="r-lib">กลับห้องสมุด</button><button class="btn" data-act="r-close-back">ปิดปกหลัง ▶</button></div>
+    <div class="rfoot">${back}<span class="pagefoot">${p}</span><span></span></div></div>`;
+  const ci = +kind.slice(1), first = ci * PER_PAGE;
+  const pairs = readChunks()[ci].map((l,k) => `<div class="rp"><span class="no">${first+k+1}</span><p class="thai">${esc(l.th)}</p><p class="en">${esc(l.en)}</p></div>`).join("");
+  return `<div class="pg-in">
+    <div class="pagehead"><span class="qno">${esc(RB.title)}</span><span class="lvchip">${esc(RB.level)}</span></div>
+    ${pairs}
+    <div class="rfoot">${back}<span class="pagefoot">${p}</span>${next}</div></div>`;
+}
+function leftHTML(s){
+  if(MODE === "read") return readPageHTML(2*s);
+  return s === 0 ? endpaperHTML() : s <= N() ? questionHTML(s-1) : recapHTML();
+}
+function rightHTML(s){
+  if(MODE === "read") return readPageHTML(2*s+1);
+  return s === 0 ? titleHTML() : s <= N() ? answerHTML(s-1) : summaryHTML();
+}
+function paintPages(){
+  $("pgL").innerHTML = S.view === "closed" ? "" : leftHTML(S.spread);
+  $("pgR").innerHTML = rightHTML(S.spread);
+}
+function paint(){
+  $("book").classList.toggle("open", S.view !== "closed");
+  const [bk1, bk2] = bookColors(B());
+  $("book").style.setProperty("--bk1", bk1); $("book").style.setProperty("--bk2", bk2);
+  $("cover").innerHTML = coverHTML();
+  $("book").classList.toggle("back", S.view === "back");
+  $("backcover").innerHTML = S.view === "back" || MODE === "read" ? backCoverHTML() : "";
+  $("tb-title").textContent = B().title;
+  $("b-home").textContent = "◀ กลับห้องสมุด";
+  paintPages(); setStacks(); paintControls();
+}
+function setStacks(){
+  const p = S.view === "closed" ? 0 : Math.min(1, S.spread/Math.max(1, lastSpread())), b = $("book");
+  b.style.setProperty("--tl", (2.5 + 6.5*p).toFixed(1)+"px");
+  b.style.setProperty("--tr", (9 - 6.5*p).toFixed(1)+"px");
+}
+function paintControls(){
+  $("controls").innerHTML = S.view === "closed"
+    ? `<button class="btn" data-cam="open">เปิดหนังสือ ✦</button>`
+    : S.view === "back" ? `<button class="btn" data-cam="reopen">เปิดอีกครั้ง ✦</button>`
+    : (MODE === "read" ? [["left","◀ หน้าซ้าย"],["spread","ทั้งเล่ม"],["right","หน้าขวา ▶"]] : [["left","◀ โจทย์"],["spread","ทั้งเล่ม"],["right","เฉลย ▶"]]).map(([m,t])=>`<button class="btn cam" data-cam="${m}" aria-pressed="${S.cam===m}">${t}</button>`).join("");
+}
+
+/* ───── camera ───── */
+function layout(){
+  const st = $("stage"), W = st.clientWidth || innerWidth, H = st.clientHeight || innerHeight - 140, fits = W >= 780;
+  const pw = Math.round(fits ? Math.min(470, (W-90)/2) : Math.min(W-40, 430));
+  const ph = Math.round(Math.max(470, Math.min(H-34, pw*1.72)));
+  L = {W,H,pw,ph,fits};
+  document.documentElement.style.setProperty("--pw", pw+"px");
+  document.documentElement.style.setProperty("--ph", ph+"px");
+  $("cam").style.top = Math.max(14, (H-ph)/2 + 4) + "px";
+  setCam(S.cam);
+}
+function setCam(m){
+  S.cam = m;
+  const {W,pw,fits} = L; let tx = 0, s = 1;
+  if(m === "closed") tx = -(pw+10)/2;
+  else if(m === "back") tx = (pw+10)/2;
+  else if(m === "left"){ if(fits){ s = 1.04; tx = pw*.2; } else tx = pw/2 + 4; }
+  else if(m === "right"){ if(fits){ s = 1.04; tx = -pw*.2; } else tx = -pw/2 - 4; }
+  else s = fits ? 1 : Math.min(1, (W-14)/(2*pw+26));
+  $("cam").style.transform = `translateX(${tx.toFixed(1)}px) scale(${s.toFixed(3)})`;
+  for(const b of document.querySelectorAll("[data-cam]")) b.setAttribute("aria-pressed", b.dataset.cam === m);
+}
+function focusAnswer(delay){ setTimeout(() => { const a = $("answer"); if(a) a.focus({preventScroll:true}); }, delay); }
+
+/* ───── the turning leaf: nested strips, each hinged on the one before, so the sheet bends ───── */
+function ghost(node, w, h, left){
+  const g = node.cloneNode(true);
+  g.removeAttribute("id"); g.classList.add("ghost");
+  for(const el of g.querySelectorAll("[id]")) el.removeAttribute("id");
+  g.style.cssText += `;left:${left}px;width:${w}px;height:${h}px`;
+  return g;
+}
+function buildLeaf(front, back, w, h, top, n){
+  const leaf = document.createElement("div"); leaf.className = "leaf"; leaf.style.top = top+"px"; leaf.style.height = h+"px";
+  const sw = w/n, strips = []; let parent = leaf;
+  for(let k=0;k<n;k++){
+    const s = document.createElement("div"); s.className = "strip";
+    s.style.cssText = `left:${k?sw:0}px;width:${sw}px;height:${h}px`;
+    const fw = sw + (k<n-1 ? 1 : 0);
+    const f = document.createElement("div"); f.className = "face front"; f.style.width = fw+"px";
+    f.appendChild(ghost(front, w, h, -k*sw));
+    const b = document.createElement("div"); b.className = "face back"; b.style.cssText = `width:${fw}px;left:${k<n-1?-1:0}px`;
+    b.appendChild(ghost(back, w, h, -(w-(k+1)*sw) + (k<n-1?1:0)));
+    const fs = document.createElement("div"), bs = document.createElement("div"); fs.className = bs.className = "shade";
+    f.appendChild(fs); b.appendChild(bs);
+    s.append(f, b); parent.appendChild(s); parent = s; strips.push({el:s, fs, bs});
+  }
+  return {leaf, strips};
+}
+const clamp01 = x => Math.max(0, Math.min(1, x)), smooth = x => x*x*(3-2*x);
+const noBookAnim = () => still() || !SET.bookAnim;
+function poseLeaf({strips}, p, rigid, reverse){
+  const n = strips.length, D = .6;
+  let prev = 0;
+  for(let k=0;k<n;k++){
+    const u = n>1 ? k/(n-1) : 1;
+    /* the free edge leads, the part near the spine follows, with a soft belly in the middle of the sheet */
+    const fw = rigid ? -180*p : -180*smooth(clamp01(p*(1+D) - D*(1-u))) - 15*Math.sin(Math.PI*p)*Math.sin(Math.PI*(k+1)/n);
+    const a = reverse ? -180 - fw : fw;
+    strips[k].el.style.transform = `rotateY(${(a-prev).toFixed(2)}deg)`;
+    const edge = Math.abs(Math.sin(a*Math.PI/180));
+    strips[k].fs.style.opacity = (.22*edge).toFixed(3);
+    strips[k].bs.style.opacity = (.2*edge + .08*(1-p)).toFixed(3);
+    prev = a;
+  }
+}
+function runLeaf(parts, dur, rigid, done, reverse){
+  const { leaf } = parts, t0 = performance.now();
+  const shL = reverse ? $("shR") : $("shL"), shR = reverse ? $("shL") : $("shR");
+  (function step(now){
+    const t = clamp01((now - t0)/dur), p = t<.5 ? 2*t*t : 1 - Math.pow(-2*t+2,2)/2;
+    poseLeaf(parts, p, rigid, reverse);
+    shR.style.opacity = clamp01(.7*(1-1.7*p)).toFixed(3);
+    shL.style.opacity = (clamp01((p-.35)/.4) * clamp01((1-p)*2.2) * .7).toFixed(3);
+    if(t<1) requestAnimationFrame(step);
+    else { shL.style.opacity = shR.style.opacity = 0; done(); leaf.remove(); }
+  })(t0);
+}
+function tempPage(side, html){ const d = document.createElement("div"); d.className = "pg "+side; d.innerHTML = html; return d; }
+
+function turnTo(ns, camAfter, after){
+  if(busy) return;
+  S.justDone = -1;
+  if(noBookAnim()){ S.spread = ns; paint(); setCam(camAfter); after && after(); return; }
+  busy = true;
+  const pgR = $("pgR"), {pw,ph,fits} = L;
+  const oldRight = pgR.cloneNode(true);
+  S.spread = ns;
+  const newLeft = leftHTML(ns);
+  pgR.innerHTML = rightHTML(ns);
+  const parts = buildLeaf(oldRight, tempPage("L", newLeft), pw, ph, 0, leafStrips());
+  $("book").appendChild(parts.leaf);
+  setCam("spread");
+  setTimeout(() => runLeaf(parts, 1500, false, () => {
+    $("pgL").innerHTML = newLeft; setStacks(); paintControls(); busy = false;
+    setTimeout(() => { setCam(camAfter); after && after(); }, 150);
+  }), fits ? 250 : 700);
+}
+function openCover(){
+  if(busy) return;
+  S.view = "open"; S.spread = 0;
+  if(noBookAnim()){ paint(); setCam("right"); return; }
+  busy = true;
+  const {pw,ph} = L;
+  $("pgR").innerHTML = rightHTML(0);
+  const back = document.createElement("div"); back.className = "board"; back.style.borderRadius = "12px 0 0 12px";
+  const inner = tempPage("L", leftHTML(0)); inner.style.cssText = "left:10px;top:8px"; back.appendChild(inner);
+  const parts = buildLeaf($("cover"), back, pw+10, ph+16, -8, 1);
+  $("book").appendChild(parts.leaf);
+  $("cover").style.visibility = "hidden";
+  setCam("spread");
+  runLeaf(parts, 1500, true, () => {
+    $("cover").style.visibility = ""; paint(); busy = false;
+    setTimeout(() => setCam("right"), 150);
+  });
+}
+
+/* turning back, closing to the front cover, closing to (and reopening from) the back cover */
+function turnBack(ns, camAfter){
+  if(busy) return;
+  if(noBookAnim()){ S.spread = ns; paint(); setCam(camAfter); return; }
+  busy = true;
+  const pgL = $("pgL"), {pw,ph,fits} = L;
+  const oldLeft = pgL.cloneNode(true);
+  S.spread = ns;
+  const newRight = rightHTML(ns);
+  pgL.innerHTML = leftHTML(ns);
+  const parts = buildLeaf(tempPage("R", newRight), oldLeft, pw, ph, 0, leafStrips());
+  poseLeaf(parts, 0, false, true);
+  $("book").appendChild(parts.leaf);
+  setCam("spread");
+  setTimeout(() => runLeaf(parts, 1500, false, () => {
+    $("pgR").innerHTML = newRight; setStacks(); paintControls(); busy = false;
+    setTimeout(() => setCam(camAfter), 150);
+  }, true), fits ? 250 : 700);
+}
+function closeFront(){
+  if(busy) return;
+  if(noBookAnim()){ S.view = "closed"; S.spread = 0; paint(); setCam("closed"); return; }
+  busy = true;
+  const {pw,ph} = L;
+  const back = document.createElement("div"); back.className = "board"; back.style.borderRadius = "12px 0 0 12px";
+  const inner = tempPage("L", leftHTML(0)); inner.style.cssText = "left:10px;top:8px"; back.appendChild(inner);
+  $("cover").style.display = "block";
+  const parts = buildLeaf($("cover"), back, pw+10, ph+16, -8, 1);
+  poseLeaf(parts, 0, true, true);
+  $("cover").style.display = "";
+  $("book").appendChild(parts.leaf); $("book").classList.add("landL");
+  setCam("spread");
+  setTimeout(() => runLeaf(parts, 1400, true, () => {
+    $("book").classList.remove("landL");
+    S.view = "closed"; S.spread = 0; paint(); busy = false;
+    setTimeout(() => setCam("closed"), 150);
+  }, true), 300);
+}
+function boardWith(html){
+  const bd = document.createElement("div"); bd.className = "board"; bd.style.cssText = "border-radius:0 12px 12px 0;left:0;top:0";
+  const pg = tempPage("R", html); pg.style.cssText = "left:0;top:8px"; bd.appendChild(pg);
+  return bd;
+}
+function backCoverNode(){ const c = document.createElement("div"); c.className = "cover backcover"; c.style.left = "0"; c.innerHTML = backCoverHTML(); return c; }
+function closeBack(){
+  if(busy) return;
+  if(noBookAnim()){ S.view = "back"; paint(); setCam("back"); return; }
+  busy = true;
+  const {pw,ph} = L;
+  const parts = buildLeaf(boardWith(rightHTML(S.spread)), backCoverNode(), pw+10, ph+16, -8, 1);
+  $("book").appendChild(parts.leaf); $("book").classList.add("landR");
+  setCam("spread");
+  setTimeout(() => runLeaf(parts, 1400, true, () => {
+    $("book").classList.remove("landR");
+    S.view = "back"; paint(); busy = false;
+    setTimeout(() => setCam("back"), 150);
+  }), 300);
+}
+function openFromBack(){
+  if(busy) return;
+  S.view = "open"; S.spread = lastSpread();
+  if(noBookAnim()){ paint(); setCam("right"); return; }
+  busy = true;
+  const {pw,ph} = L;
+  paint(); $("book").classList.add("landR");
+  const parts = buildLeaf(boardWith(rightHTML(S.spread)), backCoverNode(), pw+10, ph+16, -8, 1);
+  poseLeaf(parts, 0, true, true);
+  $("book").appendChild(parts.leaf);
+  setCam("spread");
+  setTimeout(() => runLeaf(parts, 1400, true, () => {
+    $("book").classList.remove("landR"); busy = false;
+    setTimeout(() => setCam("right"), 150);
+  }, true), 250);
+}
+
+/* ───── screens ───── */
+let toastT;
+function toast(msg){ const t = $("toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("on"), 2600); }
+/* ───── phase 2: who is playing ───── */
+const WHO = [["🎒","นักเรียนมัธยม"],["🎓","นักศึกษา"],["💼","คนทำงาน"],["🍎","ครู / อาจารย์"],["✨","อื่น ๆ"]];
+const GOOD = [["➗","คณิตศาสตร์"],["🔬","วิทยาศาสตร์"],["💻","คอมพิวเตอร์ / เขียนโค้ด"],["🗣️","ภาษา"],["🎨","ศิลปะ / วาดรูป"],["🎵","ดนตรี"],
+              ["⚽","กีฬา"],["🍳","ทำอาหาร"],["🎮","เล่นเกม"],["📈","ธุรกิจ / การเงิน"],["🏛️","ประวัติศาสตร์"],["✍️","เขียน / เล่าเรื่อง"]];
+const LIKES = [["🐉","แฟนตาซี"],["🧭","ผจญภัย"],["🚀","วิทยาศาสตร์ / อวกาศ"],["🔍","ลึกลับ / สืบสวน"],["💌","ความรัก"],["😆","ตลก"],["👻","สยองขวัญ"],
+               ["☕","ชีวิตประจำวัน"],["🐾","สัตว์"],["🎮","เกม"],["🌸","อนิเมะ / การ์ตูน"],["🤖","เทคโนโลยี"],["🏅","กีฬา"],["📰","ข่าว / เรื่องจริง"],["🏯","ประวัติศาสตร์"],["🌿","ธรรมชาติ"]];
+const PKEY = "trans-taller.profile";
+function loadProfile(){ try{ const p = JSON.parse(localStorage.getItem(PKEY)); return p && p.name ? p : null; }catch(e){ return null; } }
+function saveProfile(p){ try{ localStorage.setItem(PKEY, JSON.stringify(p)); }catch(e){} }
+let P = loadProfile();
+let OB = { step:0, editing:false, d:null };
+const whoText = p => p.who === "อื่น ๆ" && p.whoOther ? p.whoOther : p.who;
+
+function openOnboard(editing){
+  OB = { step:0, editing, d: P ? JSON.parse(JSON.stringify(P)) : {name:"", who:"", whoOther:"", good:[], likes:[]} };
+  $("onboard").classList.add("on"); renderOnboard();
+}
+function closeOnboard(){ $("onboard").classList.remove("on"); }
+function renderOnboard(){
+  const d = OB.d, s = OB.step, nm = esc(d.name || "");
+  const chips = (list, sel, multi) => `<div class="chips">${list.map(([ic,t]) =>
+    `<button class="pick" data-pick="${esc(t)}" aria-pressed="${multi ? sel.includes(t) : sel === t}">${ic} ${esc(t)}</button>`).join("")}</div>`;
+  let body = "";
+  if(s === 0) body = `<h2 class="ob-q" id="ob-q">ก่อนเริ่ม ขอรู้จักกันหน่อยนะ ชื่ออะไรเอ่ย</h2>
+    <p class="ob-sub">ชื่อนี้จะใช้เรียกในเกม พิมพ์ชื่อเล่นก็ได้</p>
+    <input class="field" id="ob-name" maxlength="20" autocomplete="off" placeholder="เช่น เก้า" value="${nm}">`;
+  if(s === 1) body = `<h2 class="ob-q" id="ob-q">${nm} เป็นใครเอ่ย</h2><p class="ob-sub">เลือกหนึ่งอย่าง</p>
+    ${chips(WHO, d.who, false)}
+    ${d.who === "อื่น ๆ" ? `<input class="field" id="ob-other" maxlength="30" autocomplete="off" placeholder="บอกหน่อยว่าเป็นอะไร" value="${esc(d.whoOther||"")}">` : ""}`;
+  if(s === 2) body = `<h2 class="ob-q" id="ob-q">${nm} เก่งเรื่องอะไรบ้าง</h2><p class="ob-sub">เลือกได้หลายอย่าง</p>
+    ${chips(GOOD, d.good, true)}<p class="count">เลือกแล้ว ${d.good.length} อย่าง</p>`;
+  if(s === 3) body = `<h2 class="ob-q" id="ob-q">ชอบเรื่องแนวไหนบ้าง</h2><p class="ob-sub">เลือกได้หลายอย่าง เรื่องที่ให้แปลส่วนใหญ่จะมาจากแนวที่เลือก และมีแนวอื่นปนบ้างให้ไม่เบื่อ</p>
+    ${chips(LIKES, d.likes, true)}<p class="count">เลือกแล้ว ${d.likes.length} อย่าง</p>`;
+  if(s === 4) body = `<div class="card-head">${mascot("wow","")}<div><div class="kicker">พร้อมแล้ว</div><h2 class="ob-q" id="ob-q">ยินดีต้อนรับ ${nm}</h2></div></div>
+    <div class="sumlist">
+      <div><b>เป็น</b><span>${esc(whoText(d))}</span></div>
+      <div><b>เก่งเรื่อง</b><span>${d.good.map(esc).join(" · ")}</span></div>
+      <div><b>ชอบเรื่องแนว</b><span>${d.likes.map(esc).join(" · ")}</span></div>
+    </div>`;
+  const head = s < 4 ? `<div class="card-head" style="margin-bottom:6px">${mascot(s===0?"happy":"calm","mini")}<div class="kicker">ข้อมูลของฉัน · ${s+1} / 4</div></div>` : "";
+  $("ob-card").innerHTML = `${OB.editing ? `<button class="x" data-ob="close" aria-label="ปิด">×</button>` : ""}
+    <div class="steps">${[0,1,2,3,4].map(k=>`<i class="${k<=s?"on":""}"></i>`).join("")}</div>
+    ${head}${body}<p class="err" id="ob-err"></p>
+    <div class="ob-nav"><button class="btn ghost small" data-ob="back" ${s===0?"hidden":""}>◀ ย้อนกลับ</button><span></span>
+      <button class="btn" data-ob="next">${s === 4 ? "เข้าห้องสมุดกันเลย ✦" : s === 3 ? "เสร็จแล้ว ✦" : "ถัดไป ▶"}</button></div>`;
+  const inp = $("ob-name") || $("ob-other");
+  if(inp) setTimeout(() => inp.focus(), 60);
+}
+function obNext(){
+  const d = OB.d, s = OB.step, err = m => { $("ob-err").textContent = m; };
+  if(s === 0){ d.name = $("ob-name").value.trim(); if(!d.name) return err("พิมพ์ชื่อก่อนนะ"); }
+  if(s === 1){
+    if(!d.who) return err("เลือกหนึ่งอย่างก่อนนะ");
+    if(d.who === "อื่น ๆ"){ d.whoOther = $("ob-other").value.trim(); if(!d.whoOther) return err("บอกหน่อยว่าเป็นอะไร"); }
+  }
+  if(s === 2 && !d.good.length) return err("เลือกอย่างน้อยหนึ่งอย่างนะ");
+  if(s === 3 && !d.likes.length) return err("เลือกอย่างน้อยหนึ่งแนวนะ");
+  if(s === 4){ P = d; saveProfile(P); closeOnboard(); renderMe(); return; }
+  OB.step++; renderOnboard();
+}
+function renderMe(){
+  const c = $("me-chip");
+  if(!P){ c.hidden = true; return; }
+  c.hidden = false; $("me-init").textContent = [...P.name][0] || "?"; $("me-name").textContent = P.name;
+}
+$("onboard").addEventListener("click", e => {
+  const pick = e.target.closest("[data-pick]"), nav = e.target.closest("[data-ob]"), d = OB.d;
+  if(pick){
+    const t = pick.dataset.pick;
+    if(OB.step === 1){ d.whoOther = $("ob-other") ? $("ob-other").value : d.whoOther; d.who = t; }
+    if(OB.step === 2) d.good = d.good.includes(t) ? d.good.filter(x=>x!==t) : [...d.good, t];
+    if(OB.step === 3) d.likes = d.likes.includes(t) ? d.likes.filter(x=>x!==t) : [...d.likes, t];
+    renderOnboard(); return;
+  }
+  if(!nav) return;
+  if(nav.dataset.ob === "next") obNext();
+  if(nav.dataset.ob === "back"){
+    if(OB.step === 0) return;
+    if(OB.step === 1 && $("ob-other")) d.whoOther = $("ob-other").value.trim();
+    OB.step--; renderOnboard();
+  }
+  if(nav.dataset.ob === "close") closeOnboard();
+});
+$("onboard").addEventListener("keydown", e => { if(e.key === "Enter" && e.target.classList.contains("field")){ e.preventDefault(); obNext(); } });
+$("me-chip").onclick = () => openOnboard(true);
+
+function pickStory(level){
+  /* mostly from the genres the player likes, sometimes another one, never the same story twice in a row */
+  const pool = STORIES.filter(s => s.level === level);
+  if(!pool.length) return STORIES[0];
+  const cand = pool.length > 1 ? pool.filter(s => s.id !== S.lastStory) : pool;
+  const liked = P ? cand.filter(s => s.tags.some(t => P.likes.includes(t))) : [];
+  const other = cand.filter(s => !liked.includes(s));
+  const from = liked.length && (Math.random() < .75 || !other.length) ? liked : (other.length ? other : cand);
+  const s = from[Math.floor(Math.random()*from.length)];
+  S.lastStory = s.id;
+  return s;
+}
+function renderModal(){
+  $("m-sub").textContent = P ? `${P.name} เลือกระดับบนปก แล้วเรื่องจะถูกสุ่มให้` : "เลือกระดับบนปก แล้วเรื่องจะถูกสุ่มให้";
+  const avail = new Set(AI.has() ? LEVELS.map(l => l[0]) : STORIES.map(s => s.level));
+  const prep = loadPrepared();
+  $("b-start").innerHTML = !AI.has() ? "เปิดหนังสือ (เรื่องตัวอย่าง) ✦" : prep && prep.level === S.level ? "เปิดหนังสือ · เรื่องพร้อมแล้ว ✦" : "เปิดหนังสือ ✦";
+  $("b-sample").hidden = true; $("m-status").hidden = true;
+  const cur = loadCur();
+  $("m-resume").hidden = !cur;
+  if(cur) $("m-resume").innerHTML = `<span>เล่นค้างไว้ <b>${esc(cur.story.title)}</b> · ข้อ ${Math.min(cur.S.idx + 1, cur.story.lines.length)} / ${cur.story.lines.length}</span><button class="btn small" id="b-resume">เล่นต่อ ▶</button>`;
+  if(!avail.has(S.level)) S.level = STORIES[0].level;
+  $("levels").innerHTML = LEVELS.map(([c,t,m]) => `<button class="medal" data-lv="${c}" aria-pressed="${c===S.level}" ${avail.has(c)?"":"disabled"}>${avail.has(c)?"":'<span class="soon">เร็ว ๆ นี้</span>'}<b>${c}</b><span>${t}</span><em>${m} / ข้อ</em></button>`).join("");
+  $("m-likes").innerHTML = P && P.likes.length ? `ส่วนใหญ่จะสุ่มจากแนวที่ชอบ <b>${P.likes.map(esc).join(" · ")}</b> และมีแนวอื่นปนบ้าง` : "";
+  const full = LIB.length >= capacity();
+  $("m-full").innerHTML = full ? `ห้องสมุดเต็มแล้ว (${LIB.length} / ${capacity()} เล่ม) กดอัปเกรดเพื่อเพิ่มตู้หนังสือ หรือเปิดเล่มเดิมแล้วเล่นซ้ำเพื่อเก็บคะแนน` : "";
+  $("m-full").hidden = !full;
+  $("b-start").disabled = full;
+}
+function openModal(){ if(!P){ openOnboard(false); return; } S.modal = true; renderModal(); $("modal").classList.add("on"); setTimeout(() => $("b-start").focus(), 50); }
+function closeModal(){ S.modal = false; $("modal").classList.remove("on"); }
+function goMeadow(){
+  S.screen = "meadow"; document.body.classList.remove("reading");
+  const i = ROOM.pendingFocus; ROOM.pendingFocus = null;
+  if(i != null && i >= 0) setTimeout(() => focusShelfBook(i), 350);
+}
+function goBook(){
+  S.screen = "book"; document.body.classList.add("reading");
+  requestAnimationFrame(layout);
+}
+
+$("b-close").onclick = closeModal;
+$("modal").addEventListener("click", e => { if(e.target.id === "modal") closeModal(); });
+addEventListener("keydown", e => { if(e.key === "Escape" && S.modal) closeModal(); });
+function startStory(story){
+  closeModal();
+  MODE = "play"; RB = null; S.replayOf = null;
+  STORY = story; S.storyId = story.id;
+  Object.assign(S, {view:"closed", spread:0, idx:0, phase:"write", results:[], text:"", clued:[], vocabUsed:false, cam:"closed", justDone:-1});
+  saveCur(); paint(); goBook();
+}
+$("b-start").onclick = async () => {
+  if(LIB.length >= capacity() || S.generating) return;
+  if(!AI.has()){ startStory(pickStory(S.level)); return; }
+  const ready = takePrepared(S.level);
+  if(ready){ startStory(ready); setTimeout(() => prepareNext(S.level), 1500); return; }
+  const btn = $("b-start"), st = $("m-status"), t0 = Date.now();
+  let done = 0, total = 0;
+  const show = () => { const sec = Math.round((Date.now() - t0) / 1000); st.textContent = done ? `ครู AI กำลังเขียนประโยคที่ ${Math.min(done + 1, total)} จาก ${total} · ${sec} วินาที` : `ครู AI กำลังคิดเรื่องตามแนวที่ชอบ · ${sec} วินาที`; };
+  const tick = setInterval(show, 500);
+  S.generating = true; btn.disabled = true; btn.innerHTML = `<span class="spin-dot"></span>กำลังแต่งเรื่อง…`;
+  st.hidden = false; show();
+  try{
+    const wait = preparing;
+    if(wait){ await wait; const again = takePrepared(S.level); if(again){ clearInterval(tick); S.generating = false; btn.disabled = false; startStory(again); setTimeout(() => prepareNext(S.level), 1500); return; } }
+    const story = await generateStory(S.level, (k, n) => { done = k; total = n; show(); });
+    clearInterval(tick); S.generating = false; btn.disabled = false;
+    startStory(story);
+    setTimeout(() => prepareNext(S.level), 1500);
+  }catch(err){
+    clearInterval(tick); S.generating = false; btn.disabled = false; btn.innerHTML = "ลองอีกครั้ง ✦";
+    const hasSample = STORIES.some(x => x.level === S.level);
+    st.textContent = aiErrorText(err) + (hasSample ? " หรือเล่นเรื่องตัวอย่างไปก่อนก็ได้" : "");
+    $("b-sample").hidden = !hasSample;
+  }
+};
+$("b-sample").onclick = () => startStory(pickStory(S.level));
+$("modal").addEventListener("click", e => { if(e.target.id === "b-resume") resumeCur(); });
+$("b-home").onclick = () => {
+  if(busy) return;
+  if(MODE === "read" && RB) ROOM.pendingFocus = LIB.indexOf(RB);
+  goMeadow();
+};
+$("cover").onclick = openCover;
+$("backcover").onclick = () => { if(!busy) openFromBack(); };
+$("controls").addEventListener("click", e => {
+  const b = e.target.closest("[data-cam]"); if(!b || busy) return;
+  if(b.dataset.cam === "open") openCover(); else if(b.dataset.cam === "reopen") openFromBack(); else setCam(b.dataset.cam);
+});
+$("book").addEventListener("input", e => { if(e.target.id === "answer"){ S.text = e.target.value; saveCur(); } });
+$("book").addEventListener("focusin", e => { if(e.target.id === "answer" && S.cam !== "left") setCam("left"); });
+$("book").addEventListener("click", e => {
+  if(busy || S.view === "closed") return;
+  const b = e.target.closest("[data-act]");
+  if(!b){
+    if(e.target.closest("#pgL") && S.cam !== "left") setCam("left");
+    else if(e.target.closest("#pgR") && S.cam !== "right") setCam("right");
+    return;
+  }
+  const act = b.dataset.act, line = STORY.lines[S.idx];
+  if(act === "begin") turnTo(1, "left", () => focusAnswer(1000));
+  if(act === "vocab"){ S.vocabUsed = true; $("p-vocab").hidden = false; b.disabled = true; }
+  if(act === "next"){
+    const ref = words(line.refs[0]), k = toks(S.text).length, note = $("p-note"), a = $("answer");
+    if(k >= ref.length){ note.textContent = "เขียนครบจำนวนคำของเฉลยแล้ว ลองส่งคำแปลได้เลย"; note.hidden = false; return; }
+    S.clued.push(norm(ref[k]));
+    S.text = (S.text.trim() ? S.text.replace(/\s+$/,"") + " " : "") + ref[k] + " ";
+    a.value = S.text; a.focus({preventScroll:true});
+    note.textContent = `เติมคำว่า ${ref[k].replace(/[",.]/g,"")} ให้แล้ว คำนี้ไม่นับคะแนน`; note.hidden = false;
+  }
+  if(act === "send"){
+    if(S.grading) return;
+    const g = grade(line, S.text, S.clued, S.vocabUsed, maxPer()), at = S.idx;
+    const finish = (pts, ai) => {
+      S.grading = false;
+      if(S.idx !== at || MODE !== "play") return;
+      S.results[at] = { pts, ref:g.ref, text:S.text, marks:g.userMarks, ai };
+      S.phase = "answered"; S.justDone = at; saveCur();
+      paintPages(); $("pgR").querySelector(".pg-in").scrollTop = 0;
+      setTimeout(() => { setCam("right"); if(pts/maxPer() >= .9) setTimeout(() => FX.burst(70), 600); }, 500);
+    };
+    if(AI.has() && S.text.trim()){
+      S.grading = true; b.disabled = true; b.innerHTML = `<span class="spin-dot"></span>ครู AI กำลังตรวจ…`;
+      const given = new Set(S.clued.concat(S.vocabUsed ? line.vwords : []));
+      gradeAI(line, S.text).then(ai => {
+        const words = toks(S.text), share = words.filter(w => given.has(w)).length / Math.max(1, words.length);
+        finish(Math.round(maxPer() * ai.score * (1 - share)), ai);
+      }).catch(err => finish(g.pts, { better:"", tip: "ตรวจด้วย AI ไม่สำเร็จ (" + aiErrorText(err) + ") จึงให้คะแนนจากการเทียบคำแทน" }));
+    } else finish(g.pts, null);
+  }
+  if(act === "advance"){
+    if(S.idx < N()-1){
+      S.idx++; S.phase = "write"; S.text = ""; S.clued = []; S.vocabUsed = false; saveCur();
+      turnTo(S.idx+1, "left", () => focusAnswer(1000));
+    } else {
+      S.idx = N(); S.phase = "end";
+      const total = S.results.reduce((a,r)=>a+r.pts,0);
+      const entry = { id: Date.now(), storyId: STORY.id, title: STORY.title, level: STORY.level, genre: STORY.genre, cast: STORY.cast, moral: STORY.moral, hue: STORY.hue, story: STORY.ai ? STORY : undefined,
+        lines: STORY.lines.map((l,i) => ({ th: l.th, en: S.results[i].ref, mine: S.results[i].text.trim(), pts: S.results[i].pts })),
+        total, max: N()*maxPer(), date: new Date().toISOString(), plays: 1 };
+      const old = S.replayOf != null ? LIB[S.replayOf] : null;
+      if(old){
+        old.plays = (old.plays || 1) + 1;
+        if(total > old.total) Object.assign(old, { lines: entry.lines, total, date: entry.date });
+        S.lastBook = S.replayOf;
+      } else { LIB.push(entry); S.lastBook = LIB.length - 1; }
+      WAL.earned += total; saveWallet(); saveLib(); clearCur(); buildRoom(); renderWallet();
+      turnTo(N()+1, "right", () => setTimeout(() => FX.burst(170), 700));
+    }
+  }
+  if(act === "again") goMeadow();
+  if(act === "tolib"){ ROOM.pendingFocus = S.lastBook != null ? S.lastBook : LIB.length - 1; goMeadow(); }
+  if(act === "r-replay"){
+    const st = storyOf(RB); if(!st) return;
+    S.replayOf = LIB.indexOf(RB); MODE = "play"; RB = null;
+    STORY = st; S.storyId = st.id; S.level = st.level;
+    Object.assign(S, {view:"closed", spread:0, idx:0, phase:"write", results:[], text:"", clued:[], vocabUsed:false, justDone:-1});
+    saveCur(); paint(); setCam("closed");
+  }
+  /* reading */
+  if(act === "r-start") turnTo(1, "left");
+  if(act === "r-cam-right") setCam("right");
+  if(act === "r-cam-left") setCam("left");
+  if(act === "r-turn"){ if(S.spread < lastSpread()) turnTo(S.spread+1, "left"); }
+  if(act === "r-back-spread"){ if(S.spread > 0) turnBack(S.spread - 1, "right"); }
+  if(act === "r-close-front") closeFront();
+  if(act === "r-close-back") closeBack();
+  if(act === "r-lib"){ ROOM.pendingFocus = LIB.indexOf(RB); goMeadow(); }
+});
+
+/* ───── the library shelf ───── */
+function renderLibrary(){
+  $("lib-mascot").innerHTML = mascot(LIB.length ? "happy" : "calm", "");
+  $("lib-title").textContent = P ? `ห้องสมุดของ ${P.name}` : "ห้องสมุดแห่งเรื่องราว";
+  $("lib-sub").textContent = `มีหนังสือ ${LIB.length} / ${capacity()} เล่ม` + (LIB.length ? " · แตะที่ปกเพื่ออ่าน" : "");
+  const body = $("lib-body"), w = body.clientWidth || Math.min(innerWidth - 80, 870);
+  const cols = Math.max(2, Math.min(6, Math.floor((w + 14) / 128)));
+  const total = Math.ceil(Math.max(capacity(), LIB.length, cols) / cols) * cols;
+  let slots = "";
+  for(let i=0;i<total;i++){
+    const cls = `slot${i % cols === 0 ? " rowstart" : ""}${i % cols === cols-1 ? " rowend" : ""}`;
+    const b = LIB[i];
+    if(b){
+      const [c1, c2] = bookColors(b);
+      slots += `<div class="${cls}"><button class="minibook" data-book="${i}" style="--c1:${c1};--c2:${c2}" aria-label="อ่าน ${esc(b.title)} ระดับ ${esc(b.level)}">
+        <span class="sp"></span><span class="fr"></span><span class="tt">${esc(b.title)}</span><span class="sl">${esc(b.level)}</span><span class="sc">${b.total} / ${b.max}</span></button></div>`;
+    } else slots += `<div class="${cls}"><div class="emptyslot">${i < capacity() ? "ว่าง" : "🔒 อัปเกรด"}</div></div>`;
+  }
+  body.innerHTML = (LIB.length ? "" : `<div class="lib-empty">${mascot("happy","mini")}<p>เล่นเรื่องจนจบ แล้วหนังสือเล่มนั้นจะมาอยู่บนชั้นนี้ แตะหนังสือปริศนาบนแท่นเพื่อเริ่มเรื่องแรกได้เลย</p></div>`)
+    + `<div class="shelf" style="--cols:${cols}">${slots}</div>`;
+}
+function openLibrary(){ $("lib").classList.add("on"); renderLibrary(); setTimeout(() => $("lib-close").focus(), 50); }
+function closeLibrary(){ $("lib").classList.remove("on"); }
+function openBook(i){
+  if(!LIB[i]) return;
+  closeLibrary();
+  MODE = "read"; RB = LIB[i];
+  Object.assign(S, {view:"closed", spread:0, cam:"closed", justDone:-1});
+  paint(); goBook();
+}
+$("lib-close").onclick = closeLibrary;
+$("lib").addEventListener("click", e => {
+  if(e.target.id === "lib"){ closeLibrary(); return; }
+  const b = e.target.closest("[data-book]"); if(b) openBook(+b.dataset.book);
+});
+addEventListener("keydown", e => { if(e.key === "Escape" && $("lib").classList.contains("on")) closeLibrary(); });
+addEventListener("resize", () => { if($("lib").classList.contains("on")) renderLibrary(); });
+addEventListener("resize", () => { resize3D(); if(S.screen === "book") layout(); });
+
+/* ───── petals and confetti ───── */
+const FX = (function(){
+  const c = $("fx"), x = c.getContext("2d"), cols = ["#fff3c4","#ffe08a","#ffffff","#f7c3d3"];
+  let W, H, P = [], C = [], running = false;
+  function size(){ W = c.width = innerWidth; H = c.height = innerHeight; }
+  size(); addEventListener("resize", size);
+  for(let i=0;i<(smoothMode() ? 0 : 22);i++) P.push({x:Math.random(), y:Math.random(), r:1.4+Math.random()*2.2, s:.0003+Math.random()*.0005, p:Math.random()*6.28, c:cols[i%cols.length]});
+  function frame(t){
+    x.clearRect(0,0,W,H);
+    for(const p of P){
+      if(!still()){ p.y += p.s; if(p.y > 1.03) p.y = -.03; }
+      const px = p.x*W + Math.sin(t/1600 + p.p)*30, py = p.y*H;
+      x.save(); x.translate(px, py); x.rotate(Math.sin(t/900 + p.p)); x.globalAlpha = .8; x.fillStyle = p.c;
+      x.beginPath(); x.ellipse(0, 0, p.r, p.r*.55, 0, 0, 6.28); x.fill(); x.restore();
+    }
+    for(const q of C){
+      q.vy += .12; q.x += q.vx; q.y += q.vy; q.vx *= .99; q.a += q.va;
+      x.save(); x.translate(q.x, q.y); x.rotate(q.a); x.fillStyle = q.c; x.fillRect(-4, -2.5, 8, 5); x.restore();
+    }
+    C = C.filter(q => q.y < H + 30);
+    if((!still() && P.length && !document.body.classList.contains("reading")) || C.length) requestAnimationFrame(frame); else { running = false; x.clearRect(0,0,W,H); }
+  }
+  function start(){ if(!running){ running = true; requestAnimationFrame(frame); } }
+  new MutationObserver(() => { if(!document.body.classList.contains("reading")) start(); }).observe(document.body, { attributes:true, attributeFilter:["class"] });
+  start();
+  return { burst(n){
+    if(still()) return;
+    const conf = ["#ff7fb8","#9b7bff","#5fa8ff","#2fbfa8","#ffcf5a","#ffffff"];
+    for(let i=0;i<n;i++) C.push({x:W/2 + (Math.random()-.5)*W*.5, y:H*.3, vx:(Math.random()-.5)*11, vy:-4-Math.random()*8, a:Math.random()*6, va:(Math.random()-.5)*.3, c:conf[i%conf.length]});
+    start();
+  }};
+})();
+
+/* ───── the round library (home), real 3D with three.js ─────
+   A small round room. The camera orbits the altar in the middle; the altar never turns.
+   Bookcase k stands at angle -k·45° (k = 0 behind the altar, then to the right). Each one shows 6 books face-out.
+   You can only turn as far as you have bookcases; with all 8 the room turns all the way round.
+   Every upgrade adds a bookcase and one new decoration. */
+const TAU = Math.PI * 2;
+const ROOM = { Rw:2.9, camR:2.3, camY:1.95, slope:-.005, slots:MAX_CASES, perCase:6, perRow:3, theta:0, target:0, drag:null, dragged:false, pendingFocus:null, cases:[] };
+const CASE = { W:1.9, D:.44, cabH:1.55, rowH:.95, rows:2, crownH:.34 };
+const CASE_H = CASE.cabH + CASE.rows * CASE.rowH + CASE.crownH, WALL_H = 4.6;
+const DECOR_NAMES = ["โคมระย้าทองเหนือแท่น", "ต้นไม้ในกระถางข้างตู้", "หน้าต่างกระจกสีรอบห้อง", "ดาวระยิบบนเพดานโดม", "หนังสือวิเศษลอยรอบห้อง", "ธงประดับห้อง", "วงแหวนทองเรืองแสงบนพื้น"];
+let G = null;
+const stepA = () => TAU / ROOM.slots;
+const fullCircle = () => WAL.cases >= MAX_CASES;
+const rotMin = () => fullCircle() ? -Infinity : -(WAL.cases - 1) * stepA();
+const rotMax = () => fullCircle() ? Infinity : 0;
+const clampTheta = t => Math.min(rotMax(), Math.max(rotMin(), t));
+
+function canvasTex(w, h, draw){
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  draw(c.getContext("2d"), w, h);
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = 8;
+  return t;
+}
+function glowTex(inner, outer){
+  return canvasTex(128, 128, (x) => { const g = x.createRadialGradient(64,64,0,64,64,64); g.addColorStop(0, inner); g.addColorStop(1, outer); x.fillStyle = g; x.fillRect(0,0,128,128); });
+}
+function initRoom(){
+  if(!window.THREE){ toast("โหลดห้องสมุด 3 มิติไม่สำเร็จ ต้องต่ออินเทอร์เน็ตแล้วเปิดใหม่"); return; }
+  const renderer = new THREE.WebGLRenderer({ antialias:true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, smoothMode() ? 1.25 : 1.75));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
+  renderer.shadowMap.enabled = !smoothMode(); renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  $("room").appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color("#1b1236");
+  const camera = new THREE.PerspectiveCamera(55, 1, .05, 40);
+  G = { smoothBuilt: smoothMode(), renderer, scene, camera, books:[], altarPick:[], hover:null, clock:new THREE.Clock(), ray:new THREE.Raycaster(), ptr:new THREE.Vector2(), anim:[] };
+  const wood = canvasTex(256, 256, (x, w, h) => {
+    x.fillStyle = "#c48452"; x.fillRect(0, 0, w, h);
+    for(let i=0;i<80;i++){
+      x.strokeStyle = `rgba(${Math.random()<.5 ? "90,50,25" : "240,190,130"},${(.06 + Math.random()*.14).toFixed(2)})`;
+      x.lineWidth = 1 + Math.random()*3;
+      const X = Math.random()*w; x.beginPath(); x.moveTo(X, 0); x.bezierCurveTo(X+10, h*.3, X-10, h*.65, X+4, h); x.stroke();
+    }
+  });
+  wood.wrapS = wood.wrapT = THREE.RepeatWrapping;
+  G.M = {
+    wood: new THREE.MeshStandardMaterial({ map:wood, color:"#f0b47a", roughness:.6 }),
+    woodDark: new THREE.MeshStandardMaterial({ map:wood, color:"#a86a3e", roughness:.7 }),
+    back: new THREE.MeshStandardMaterial({ color:"#4a3480", roughness:.95 }),
+    gold: new THREE.MeshStandardMaterial({ color:"#f0c35a", roughness:.3, metalness:.55, emissive:"#6a4300", emissiveIntensity:.35 }),
+    stone: new THREE.MeshStandardMaterial({ color:"#eee8ff", roughness:.42 }),
+    lamp: new THREE.MeshBasicMaterial({ color:"#ffe3a0" }),
+    lampGlow: new THREE.SpriteMaterial({ map:glowTex("rgba(255,226,150,.9)","rgba(255,226,150,0)"), blending:THREE.AdditiveBlending, depthWrite:false })
+  };
+  buildRoomShell(); buildCases(); buildAltar(); buildLights(); buildDust(); buildDecor();
+  placeBooks();
+  resize3D();
+  bindRoomInput();
+  updateTurns();
+  renderer.setAnimationLoop(frame);
+}
+function buildRoomShell(){
+  const { scene } = G, R = ROOM.Rw;
+  const floorTex = canvasTex(1024, 1024, (x, w) => {
+    const c = w/2, unit = c / R;
+    x.fillStyle = "#7a4a2a"; x.fillRect(0, 0, w, w);
+    for(let r = 20; r < c; r += 34){
+      x.strokeStyle = "rgba(50,25,10,.45)"; x.lineWidth = 2; x.beginPath(); x.arc(c, c, r, 0, TAU); x.stroke();
+      x.strokeStyle = "rgba(255,200,140,.08)"; x.lineWidth = 14; x.beginPath(); x.arc(c, c, r + 16, 0, TAU); x.stroke();
+      const seams = Math.max(6, Math.round(r / 18));
+      for(let k=0;k<seams;k++){ const an = (k + (r % 3) * .33) / seams * TAU; x.strokeStyle = "rgba(50,25,10,.35)"; x.lineWidth = 2; x.beginPath(); x.moveTo(c + Math.cos(an)*r, c + Math.sin(an)*r); x.lineTo(c + Math.cos(an)*(r+34), c + Math.sin(an)*(r+34)); x.stroke(); }
+    }
+    const rug = 1.7 * unit, g = x.createRadialGradient(c, c, 0, c, c, rug);
+    g.addColorStop(0, "#8a63d8"); g.addColorStop(.7, "#5b3fa8"); g.addColorStop(1, "#3e2a80");
+    x.fillStyle = g; x.beginPath(); x.arc(c, c, rug, 0, TAU); x.fill();
+    for(const [rr, lw] of [[rug - 12, 12], [rug - 38, 5], [rug * .55, 5]]){ x.strokeStyle = "#e9c46a"; x.lineWidth = lw; x.beginPath(); x.arc(c, c, rr, 0, TAU); x.stroke(); }
+    x.fillStyle = "#e9c46a";
+    for(let k=0;k<24;k++){ const an = k / 24 * TAU, rr = rug - 66; x.save(); x.translate(c + Math.cos(an)*rr, c + Math.sin(an)*rr); x.rotate(an); x.fillRect(-10, -10, 20, 20); x.restore(); }
+  });
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(R, 96), new THREE.MeshStandardMaterial({ map:floorTex, roughness:.75 }));
+  floor.rotation.x = -Math.PI/2; floor.receiveShadow = true; scene.add(floor);
+  /* wall: wood wainscot below, violet wallpaper with arched gold panels above */
+  const wallTex = canvasTex(512, 1024, (x, w, h) => {
+    const wain = h * (1.05 / WALL_H);
+    x.fillStyle = "#4b3486"; x.fillRect(0, 0, w, h - wain);
+    x.strokeStyle = "rgba(233,196,106,.16)"; x.lineWidth = 2;
+    for(let yy = -w; yy < h; yy += 64){ x.beginPath(); x.moveTo(0, yy); x.lineTo(w, yy + w); x.stroke(); x.beginPath(); x.moveTo(w, yy); x.lineTo(0, yy + w); x.stroke(); }
+    x.strokeStyle = "#e9c46a"; x.lineWidth = 6;
+    const top = 120, bot = h - wain - 70, l = 90, r = w - 90;
+    x.beginPath(); x.moveTo(l, bot); x.lineTo(l, top + (r-l)/2); x.arc(w/2, top + (r-l)/2, (r-l)/2, Math.PI, 0); x.lineTo(r, bot); x.closePath(); x.stroke();
+    x.fillStyle = "rgba(255,230,170,.08)"; x.fill();
+    const wg = x.createLinearGradient(0, h - wain, 0, h); wg.addColorStop(0, "#b87a48"); wg.addColorStop(1, "#7d4a28");
+    x.fillStyle = wg; x.fillRect(0, h - wain, w, wain);
+    x.strokeStyle = "rgba(60,30,10,.5)"; x.lineWidth = 4; x.strokeRect(50, h - wain + 40, w - 100, wain - 80);
+    x.fillStyle = "#e9c46a"; x.fillRect(0, h - wain - 12, w, 12);
+    x.fillStyle = "#2e2058"; x.fillRect(0, 0, w, 40); x.fillStyle = "#e9c46a"; x.fillRect(0, 40, w, 8);
+  });
+  wallTex.wrapS = THREE.RepeatWrapping; wallTex.repeat.set(12, 1);
+  const wall = new THREE.Mesh(new THREE.CylinderGeometry(R, R, WALL_H, 128, 1, true), new THREE.MeshStandardMaterial({ map:wallTex, roughness:.9, side:THREE.BackSide }));
+  wall.position.y = WALL_H/2; wall.receiveShadow = true; scene.add(wall);
+  const ceilTex = canvasTex(512, 512, (x, w) => {
+    const c = w/2, g = x.createRadialGradient(c, c, 0, c, c, c);
+    g.addColorStop(0, "#fff0c4"); g.addColorStop(.2, "#e8c8ff"); g.addColorStop(.36, "#5a428f"); g.addColorStop(1, "#1e1440");
+    x.fillStyle = g; x.fillRect(0, 0, w, w);
+    x.strokeStyle = "rgba(233,196,106,.6)"; x.lineWidth = 4;
+    for(let k=0;k<ROOM.slots;k++){ const an = k / ROOM.slots * TAU; x.beginPath(); x.moveTo(c + Math.cos(an)*c*.36, c + Math.sin(an)*c*.36); x.lineTo(c + Math.cos(an)*c, c + Math.sin(an)*c); x.stroke(); }
+    x.beginPath(); x.arc(c, c, c*.36, 0, TAU); x.stroke();
+  });
+  const ceil = new THREE.Mesh(new THREE.CircleGeometry(R, 64), new THREE.MeshBasicMaterial({ map:ceilTex }));
+  ceil.rotation.x = Math.PI/2; ceil.position.y = WALL_H; scene.add(ceil);
+}
+function makeCase(k){
+  const { M } = G, { W, D, cabH, rowH, rows, crownH } = CASE, H = CASE_H;
+  const a = -k * stepA(), R = ROOM.Rw - D/2 - .03, g = new THREE.Group();
+  g.position.set(-Math.sin(a) * R, 0, -Math.cos(a) * R); g.rotation.y = a;
+  const box = (w, h, d, m, x, y, z) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.castShadow = true; o.receiveShadow = true; g.add(o); return o; };
+  box(W, cabH, D, M.wood, 0, cabH/2, 0);
+  for(const sx of [-1, 1]){
+    box(W/2 - .1, cabH - .3, .02, M.woodDark, sx * W/4, cabH/2, D/2 + .01);
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(.03, 12, 10), M.gold); knob.position.set(sx * .08, cabH/2 + .05, D/2 + .04); g.add(knob);
+  }
+  box(W + .06, .05, D + .06, M.woodDark, 0, cabH, 0);
+  box(W - .04, rows*rowH, .03, M.back, 0, cabH + rows*rowH/2, -D/2 + .02);
+  for(const sx of [-1, 1]) box(.07, rows*rowH, D, M.wood, sx * (W/2 - .035), cabH + rows*rowH/2, 0);
+  for(let r=1;r<rows;r++) box(W - .1, .05, D, M.wood, 0, cabH + r*rowH, 0);
+  for(let r=0;r<rows;r++) box(W - .12, .03, .02, M.gold, 0, cabH + r*rowH + .07, D/2 - .03);
+  box(W + .1, crownH, D + .1, M.woodDark, 0, H - crownH/2, .02);
+  box(W + .12, .04, D + .14, M.gold, 0, H - crownH + .02, .03);
+  const med = new THREE.Mesh(new THREE.SphereGeometry(.08, 20, 14), M.gold); med.position.set(0, H - crownH/2, D/2 + .09); g.add(med);
+  const lamp = new THREE.Mesh(new THREE.SphereGeometry(.06, 14, 10), M.lamp); lamp.position.set(0, H + .1, .1); g.add(lamp);
+  const glow = new THREE.Sprite(M.lampGlow); glow.scale.set(.8, .8, 1); glow.position.copy(lamp.position); g.add(glow);
+  g.userData.rise = 1;
+  G.scene.add(g);
+  return g;
+}
+function buildCases(){
+  if(!G) return;
+  for(const c of ROOM.cases) G.scene.remove(c);
+  ROOM.cases = [];
+  for(let k=0;k<WAL.cases;k++) ROOM.cases.push(makeCase(k));
+}
+function buildAltar(){
+  const { scene, M } = G, g = new THREE.Group();
+  const shadow = (m) => { m.castShadow = true; m.receiveShadow = true; return m; };
+  const step1 = shadow(new THREE.Mesh(new THREE.CylinderGeometry(.86, .92, .1, 64), M.stone)); step1.position.y = .05; g.add(step1);
+  const step2 = shadow(new THREE.Mesh(new THREE.CylinderGeometry(.66, .7, .1, 64), M.stone)); step2.position.y = .15; g.add(step2);
+  const ring0 = new THREE.Mesh(new THREE.TorusGeometry(.68, .022, 12, 64), M.gold); ring0.rotation.x = Math.PI/2; ring0.position.y = .2; g.add(ring0);
+  const prof = [[.34,0],[.31,.05],[.24,.1],[.2,.22],[.19,.38],[.215,.48],[.19,.58],[.22,.7],[.3,.78],[.36,.82]].map(([r,y]) => new THREE.Vector2(r, y));
+  const col = shadow(new THREE.Mesh(new THREE.LatheGeometry(prof, 64), M.stone)); col.position.y = .2; g.add(col);
+  for(const [y, r] of [[.2+.48, .225], [.2+.1, .25]]){ const t = new THREE.Mesh(new THREE.TorusGeometry(r, .022, 12, 48), M.gold); t.rotation.x = Math.PI/2; t.position.y = y; g.add(t); }
+  const gemMat = new THREE.MeshStandardMaterial({ color:"#ff7fb8", emissive:"#ff3f8f", emissiveIntensity:.6, roughness:.2, metalness:.3 });
+  for(let k=0;k<4;k++){ const gm = new THREE.Mesh(new THREE.OctahedronGeometry(.05), gemMat); const an = k * TAU/4; gm.position.set(Math.sin(an)*.21, .2+.32, Math.cos(an)*.21); gm.scale.y = 1.4; g.add(gm); }
+  const plate = shadow(new THREE.Mesh(new THREE.CylinderGeometry(.42, .38, .07, 64), M.stone)); plate.position.y = 1.055; g.add(plate);
+  const ring1 = new THREE.Mesh(new THREE.TorusGeometry(.42, .02, 12, 64), M.gold); ring1.rotation.x = Math.PI/2; ring1.position.y = 1.09; g.add(ring1);
+  const tilt = .5;
+  const stand = new THREE.Group(); stand.position.set(0, 1.22, 0); stand.rotation.x = tilt; g.add(stand);
+  const leg = shadow(new THREE.Mesh(new THREE.BoxGeometry(.18, .18, .14), M.woodDark)); leg.position.set(0, -.1, .02); leg.rotation.x = -tilt; stand.add(leg);
+  const board = shadow(new THREE.Mesh(new THREE.BoxGeometry(.66, .035, .5), M.woodDark)); stand.add(board);
+  const lip = new THREE.Mesh(new THREE.BoxGeometry(.66, .05, .03), M.gold); lip.position.set(0, .03, .25); stand.add(lip);
+  const coverTex = canvasTex(400, 520, (x, w, h) => {
+    const gr = x.createLinearGradient(0, 0, w, h); gr.addColorStop(0, "#7b5cf0"); gr.addColorStop(.55, "#33228f"); gr.addColorStop(1, "#1b1157");
+    x.fillStyle = gr; x.fillRect(0, 0, w, h);
+    x.strokeStyle = "#ecc768"; x.lineWidth = 8; x.strokeRect(26, 26, w - 52, h - 52);
+    x.lineWidth = 2; x.strokeRect(42, 42, w - 84, h - 84);
+    x.fillStyle = "#fff3c4";
+    for(let k=0;k<26;k++){ const sx = 60 + Math.random()*(w-120), sy = 60 + Math.random()*(h-120), r = 1 + Math.random()*2.5; x.beginPath(); x.arc(sx, sy, r, 0, TAU); x.fill(); }
+    x.font = "700 22px Fredoka, sans-serif"; x.textAlign = "center"; x.fillStyle = "#ecc768"; x.fillText("TRANS-TALER", w/2, 92);
+    const gq = x.createLinearGradient(0, 140, 0, 380); gq.addColorStop(0, "#fff3c4"); gq.addColorStop(.5, "#f0c35a"); gq.addColorStop(1, "#b8862a");
+    x.shadowColor = "rgba(255,220,120,.9)"; x.shadowBlur = 30; x.fillStyle = gq; x.font = "700 230px Fredoka, sans-serif"; x.fillText("?", w/2, 360); x.shadowBlur = 0;
+    x.font = "700 30px Mali, sans-serif"; x.fillStyle = "#fff3c4"; x.fillText("หนังสือปริศนา", w/2, h - 70);
+  });
+  const book = new THREE.Group(); book.position.set(0, .06, -.01); stand.add(book);
+  const coverMat = new THREE.MeshStandardMaterial({ color:"#33228f", roughness:.5 });
+  const frontMat = new THREE.MeshStandardMaterial({ map:coverTex, roughness:.45, emissive:"#2a1a6a", emissiveIntensity:.25 });
+  const pagesMat = new THREE.MeshStandardMaterial({ color:"#fbf2dc", roughness:.9 });
+  const pages = shadow(new THREE.Mesh(new THREE.BoxGeometry(.43, .055, .57), pagesMat)); book.add(pages);
+  const coverTop = shadow(new THREE.Mesh(new THREE.BoxGeometry(.46, .014, .6), [coverMat, coverMat, frontMat, coverMat, coverMat, coverMat])); coverTop.position.y = .034; book.add(coverTop);
+  const coverBot = shadow(new THREE.Mesh(new THREE.BoxGeometry(.46, .014, .6), coverMat)); coverBot.position.y = -.034; book.add(coverBot);
+  const spine = shadow(new THREE.Mesh(new THREE.BoxGeometry(.03, .082, .6), coverMat)); spine.position.x = -.23; book.add(spine);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map:glowTex("rgba(255,236,170,.4)","rgba(255,214,110,0)"), blending:THREE.AdditiveBlending, depthWrite:false }));
+  halo.scale.set(1.5, 1.5, 1); halo.position.set(0, 1.45, 0); g.add(halo);
+  const magicTex = canvasTex(512, 512, (x, w) => {
+    const c = w/2; x.clearRect(0, 0, w, w); x.strokeStyle = "rgba(255,214,110,.95)";
+    for(const [r, lw] of [[240, 6], [212, 3], [150, 4]]){ x.lineWidth = lw; x.beginPath(); x.arc(c, c, r, 0, TAU); x.stroke(); }
+    x.fillStyle = "rgba(255,233,168,.95)";
+    for(let k=0;k<24;k++){ x.save(); x.translate(c, c); x.rotate(k / 24 * TAU); x.fillRect(-5, -232, 10, 16); x.restore(); }
+    x.lineWidth = 3;
+    for(let k=0;k<6;k++){ const a1 = k/6*TAU, a2 = (k+2)/6*TAU; x.beginPath(); x.moveTo(c + Math.cos(a1)*212, c + Math.sin(a1)*212); x.lineTo(c + Math.cos(a2)*212, c + Math.sin(a2)*212); x.stroke(); }
+  });
+  const magic = new THREE.Mesh(new THREE.PlaneGeometry(2.7, 2.7), new THREE.MeshBasicMaterial({ map:magicTex, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false }));
+  magic.rotation.x = -Math.PI/2; magic.position.y = .012; scene.add(magic);
+  scene.add(g);
+  Object.assign(G, { halo, magic, bookAnchor:new THREE.Vector3(0, .62, 0) });
+  G.altarPick = [pages, coverTop, coverBot, spine, board];
+  for(const m of G.altarPick) m.userData.altar = true;
+}
+function buildLights(){
+  const { scene } = G;
+  scene.add(new THREE.HemisphereLight("#ffe7c7", "#2c1c58", .8));
+  const spot = new THREE.SpotLight("#ffe2a8", 2.4, 7, .55, .6, 1.2);
+  spot.position.set(0, 4.4, .4); spot.target.position.set(0, 1, 0); spot.castShadow = true; spot.shadow.mapSize.set(1024, 1024); spot.shadow.bias = -.0008;
+  scene.add(spot, spot.target);
+  const bookLight = new THREE.PointLight("#ffd27a", .8, 3, 2); bookLight.position.set(0, 1.75, .3); scene.add(bookLight);
+  for(let k=0;k<(smoothMode() ? 1 : 4);k++){ const an = k/4*TAU + .4, p = new THREE.PointLight("#ffc98a", .85, 6, 1.6); p.position.set(Math.sin(an)*1.5, 3.7, Math.cos(an)*1.5); scene.add(p); }
+}
+function buildDust(){
+  const n = smoothMode() ? 60 : 160, pos = new Float32Array(n*3);
+  for(let i=0;i<n;i++){ const r = Math.sqrt(Math.random()) * (ROOM.Rw - .3), an = Math.random()*TAU; pos[i*3] = Math.sin(an)*r; pos[i*3+1] = Math.random()*4.3; pos[i*3+2] = Math.cos(an)*r; }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  const dust = new THREE.Points(geo, new THREE.PointsMaterial({ size:.03, map:glowTex("rgba(255,240,200,1)","rgba(255,240,200,0)"), color:"#ffe9b0", transparent:true, blending:THREE.AdditiveBlending, depthWrite:false }));
+  G.scene.add(dust); G.dust = dust;
+}
+/* one new decoration with every upgrade (tier = bookcases - 1) */
+function buildDecor(){
+  if(!G) return;
+  if(G.decor) G.scene.remove(G.decor);
+  const d = new THREE.Group(), tier = WAL.cases - 1, M = G.M, st = stepA(), R = ROOM.Rw;
+  G.decor = d; G.anim = [];
+  const flame = new THREE.SpriteMaterial({ map:glowTex("rgba(255,236,170,1)","rgba(255,170,60,0)"), blending:THREE.AdditiveBlending, depthWrite:false });
+  if(tier >= 1){
+    const y = 3.75;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(.6, .03, 10, 48), M.gold); ring.rotation.x = Math.PI/2; ring.position.y = y; d.add(ring);
+    const ring2 = new THREE.Mesh(new THREE.TorusGeometry(.32, .025, 10, 36), M.gold); ring2.rotation.x = Math.PI/2; ring2.position.y = y + .22; d.add(ring2);
+    const chain = new THREE.Mesh(new THREE.CylinderGeometry(.012, .012, WALL_H - y, 6), M.gold); chain.position.y = (WALL_H + y)/2; d.add(chain);
+    const candle = new THREE.MeshStandardMaterial({ color:"#fff6e6", roughness:.6 });
+    for(let k=0;k<10;k++){
+      const an = k/10*TAU, c = new THREE.Mesh(new THREE.CylinderGeometry(.025, .025, .14, 8), candle);
+      c.position.set(Math.sin(an)*.6, y + .09, Math.cos(an)*.6); d.add(c);
+      const f = new THREE.Sprite(flame); f.scale.set(.16, .22, 1); f.position.set(Math.sin(an)*.6, y + .21, Math.cos(an)*.6); d.add(f);
+      G.anim.push(t => f.scale.set(.15 + Math.sin(t*9 + k)*.02, .21 + Math.sin(t*7 + k*2)*.03, 1));
+    }
+    const pl = new THREE.PointLight("#ffd89a", .6, 5, 1.6); pl.position.y = y - .1; d.add(pl);
+  }
+  if(tier >= 2){
+    const pot = new THREE.MeshStandardMaterial({ color:"#c9714a", roughness:.7 }), leaf = new THREE.MeshStandardMaterial({ color:"#4fb36a", roughness:.6 });
+    const half = Math.asin((CASE.W/2 + .3) / (R - .4));
+    for(let k=0;k<WAL.cases;k++) for(const sgn of [-1, 1]){
+      const a = -k*st + sgn*half, x = -Math.sin(a)*(R - .45), z = -Math.cos(a)*(R - .45);
+      /* plants only at the two open ends of the row of bookcases */
+      if(fullCircle() || (sgn < 0 && k !== WAL.cases - 1) || (sgn > 0 && k !== 0)) continue;
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(.17, .12, .32, 16), pot); p.position.set(x, .16, z); p.castShadow = true; d.add(p);
+      for(let l=0;l<6;l++){ const b = new THREE.Mesh(new THREE.SphereGeometry(.12, 10, 8), leaf); b.position.set(x + Math.sin(l*1.1)*.12, .42 + (l%3)*.1, z + Math.cos(l*1.1)*.12); b.scale.y = 1.4; d.add(b); }
+    }
+  }
+  if(tier >= 3 && WAL.cases < MAX_CASES){
+    const glassTex = canvasTex(256, 420, (x, w, h) => {
+      x.clearRect(0, 0, w, h);
+      x.save(); x.beginPath(); x.moveTo(8, h - 8); x.lineTo(8, w/2); x.arc(w/2, w/2, w/2 - 8, Math.PI, 0); x.lineTo(w - 8, h - 8); x.closePath(); x.clip();
+      const cols = ["#ff8fb8","#8fc8ff","#ffe08a","#9fe0b0","#c3a8ff","#ffb38a"];
+      for(let yy = 0; yy < h; yy += 46) for(let xx = 0; xx < w; xx += 46){ x.fillStyle = cols[(xx/46 + yy/46) % cols.length | 0]; x.globalAlpha = .85; x.fillRect(xx, yy, 46, 46); }
+      x.globalAlpha = 1; x.strokeStyle = "#2a1d4a"; x.lineWidth = 5;
+      for(let yy = 0; yy < h; yy += 46){ x.beginPath(); x.moveTo(0, yy); x.lineTo(w, yy); x.stroke(); }
+      for(let xx = 0; xx < w; xx += 46){ x.beginPath(); x.moveTo(xx, 0); x.lineTo(xx, h); x.stroke(); }
+      x.restore();
+      x.strokeStyle = "#e9c46a"; x.lineWidth = 10; x.beginPath(); x.moveTo(8, h - 8); x.lineTo(8, w/2); x.arc(w/2, w/2, w/2 - 8, Math.PI, 0); x.lineTo(w - 8, h - 8); x.closePath(); x.stroke();
+    });
+    const glass = new THREE.MeshBasicMaterial({ map:glassTex, transparent:true, side:THREE.DoubleSide });
+    for(let k=WAL.cases;k<MAX_CASES;k++){
+      const a = -k*st, win = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.8), glass);
+      win.position.set(-Math.sin(a)*(R - .03), 2.5, -Math.cos(a)*(R - .03)); win.rotation.y = a; d.add(win);
+    }
+  }
+  if(tier >= 4){
+    const n = 140, pos = new Float32Array(n*3);
+    for(let i=0;i<n;i++){ const r = Math.sqrt(Math.random()) * (R - .2), an = Math.random()*TAU; pos[i*3] = Math.sin(an)*r; pos[i*3+1] = WALL_H - .03; pos[i*3+2] = Math.cos(an)*r; }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    const mat = new THREE.PointsMaterial({ size:.06, map:glowTex("rgba(255,250,220,1)","rgba(255,250,220,0)"), transparent:true, blending:THREE.AdditiveBlending, depthWrite:false });
+    d.add(new THREE.Points(geo, mat));
+    G.anim.push(t => { mat.opacity = .65 + Math.sin(t*2.2)*.3; });
+  }
+  if(tier >= 5){
+    const hues = [330, 28, 212, 160, 270];
+    hues.forEach((h, k) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(.28, .04, .36), new THREE.MeshStandardMaterial({ color:`hsl(${h},75%,58%)`, emissive:`hsl(${h},80%,30%)`, emissiveIntensity:.5 }));
+      d.add(m);
+      G.anim.push(t => { const an = t*.25 + k/hues.length*TAU; m.position.set(Math.sin(an)*1.6, 3.1 + Math.sin(t*1.3 + k)*.15, Math.cos(an)*1.6); m.rotation.set(Math.sin(t + k)*.3, -an, Math.sin(t*.8 + k)*.25); });
+    });
+  }
+  if(tier >= 6){
+    const banTex = canvasTex(128, 320, (x, w, h) => {
+      const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, "#ff8fb8"); g.addColorStop(1, "#7f5cf0");
+      x.fillStyle = g; x.beginPath(); x.moveTo(0, 0); x.lineTo(w, 0); x.lineTo(w, h); x.lineTo(w/2, h - 40); x.lineTo(0, h); x.closePath(); x.fill();
+      x.fillStyle = "#ffe08a"; x.font = "700 70px Fredoka, sans-serif"; x.textAlign = "center"; x.fillText("✦", w/2, 150);
+      x.fillStyle = "#e9c46a"; x.fillRect(0, 0, w, 14);
+    });
+    const ban = new THREE.MeshBasicMaterial({ map:banTex, transparent:true, side:THREE.DoubleSide });
+    for(let k=0;k<MAX_CASES;k++){
+      const a = -k*st - st/2, m = new THREE.Mesh(new THREE.PlaneGeometry(.45, 1.1), ban);
+      m.position.set(-Math.sin(a)*(R - .05), WALL_H - .75, -Math.cos(a)*(R - .05)); m.rotation.y = a; d.add(m);
+    }
+  }
+  if(tier >= 7){
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(2.1, .03, 8, 128), new THREE.MeshBasicMaterial({ color:"#ffd36e" }));
+    ring.rotation.x = Math.PI/2; ring.position.y = .02; d.add(ring);
+    const glow = new THREE.Mesh(new THREE.RingGeometry(1.95, 2.25, 128), new THREE.MeshBasicMaterial({ color:"#ffd36e", transparent:true, opacity:.35, blending:THREE.AdditiveBlending, depthWrite:false }));
+    glow.rotation.x = -Math.PI/2; glow.position.y = .015; d.add(glow);
+    G.anim.push(t => { glow.material.opacity = .25 + Math.sin(t*1.5)*.12; });
+  }
+  G.scene.add(d);
+}
+/* front cover of a finished book, facing into the room; the title is large so it reads from the altar */
+function wrapThai(x, text, maxW){
+  const seg = window.Intl && Intl.Segmenter ? [...new Intl.Segmenter("th", { granularity:"word" }).segment(text)].map(p => p.segment) : Array.from(text);
+  const lines = []; let cur = "";
+  for(const w of seg){ if(x.measureText(cur + w).width > maxW && cur){ lines.push(cur); cur = w.trimStart(); } else cur += w; }
+  if(cur) lines.push(cur);
+  return lines;
+}
+function coverTexFor(b){
+  const [c1, c2] = bookColors(b), lv = LEVELS.find(l => l[0] === b.level) || LEVELS[1];
+  return canvasTex(360, 500, (x, w, h) => {
+    const g = x.createLinearGradient(0, 0, w, h); g.addColorStop(0, c2); g.addColorStop(1, c1);
+    x.fillStyle = g; x.fillRect(0, 0, w, h);
+    x.fillStyle = "rgba(0,0,0,.18)"; x.fillRect(0, 0, 18, h);
+    x.strokeStyle = "rgba(255,255,255,.9)"; x.lineWidth = 6; x.strokeRect(30, 16, w - 46, h - 32);
+    x.fillStyle = "#fff"; x.beginPath(); x.roundRect ? x.roundRect(42, 40, w - 70, 282, 18) : x.rect(42, 40, w - 70, 282); x.fill();
+    x.textAlign = "center"; x.textBaseline = "middle"; x.fillStyle = c1;
+    let size = 72, lines;
+    do { x.font = `700 ${size}px Mali, sans-serif`; lines = wrapThai(x, b.title, w - 100); size -= 4; } while(lines.length > 2 && size > 40);
+    size += 4;
+    const lh = size * 1.3, y0 = 181 - (Math.min(lines.length, 2) - 1) * lh / 2;
+    lines.slice(0, 2).forEach((ln, k) => x.fillText(ln, w/2 + 6, y0 + k*lh));
+    x.fillStyle = "#fff"; x.beginPath(); x.arc(w/2 + 6, 386, 42, 0, TAU); x.fill();
+    x.strokeStyle = lv[3]; x.lineWidth = 7; x.stroke();
+    x.fillStyle = lv[3]; x.font = "700 34px Fredoka, sans-serif"; x.fillText(b.level, w/2 + 6, 388);
+    x.fillStyle = "#fff"; x.font = "700 26px Fredoka, sans-serif"; x.fillText(`${b.total} / ${b.max}`, w/2 + 6, 458);
+  });
+}
+function placeBooks(){
+  if(!G) return;
+  if(ROOM.cases.length !== WAL.cases) buildCases();
+  for(const m of G.books){ m.parent.remove(m); m.geometry.dispose(); for(const mt of m.material){ if(mt.map) mt.map.dispose(); mt.dispose(); } }
+  G.books = []; G.hover = null;
+  const { cabH, rowH, D } = CASE, bw = .54, bh = .76, bt = .07, lean = .12;
+  LIB.forEach((bk, i) => {
+    const k = Math.floor(i / ROOM.perCase), within = i % ROOM.perCase, r = Math.floor(within / ROOM.perRow), j = within % ROOM.perRow;
+    if(!ROOM.cases[k]) return;
+    const [c1] = bookColors(bk);
+    const side = new THREE.MeshStandardMaterial({ color:c1, roughness:.55 });
+    const pagesM = new THREE.MeshStandardMaterial({ color:"#fbf2dc", roughness:.9 });
+    const front = new THREE.MeshStandardMaterial({ map:coverTexFor(bk), roughness:.5, emissive:"#000000" });
+    const m = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bt), [pagesM, side, pagesM.clone(), pagesM.clone(), front, side.clone()]);
+    const z0 = -D/2 + .05 + Math.sin(lean) * bh/2 + bt/2;
+    m.position.set((j - 1) * .6, cabH + r*rowH + .03 + Math.cos(lean) * bh/2, z0);
+    m.rotation.x = -lean;
+    m.userData = { book:i, z0, out:0 };
+    m.castShadow = true;
+    ROOM.cases[k].add(m); G.books.push(m);
+  });
+}
+function buildRoom(){ placeBooks(); }
+function resize3D(){
+  if(!G) return;
+  const w = innerWidth, h = innerHeight;
+  G.renderer.setSize(w, h);
+  G.camera.aspect = w / h;
+  const tall = w / h < 1;
+  G.camera.fov = tall ? 62 : 46;
+  ROOM.camR = 2.3;
+  ROOM.slope = tall ? -.1 : -.005;
+  G.camera.updateProjectionMatrix();
+}
+function pick(e){
+  if(!G) return null;
+  G.ptr.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  G.ray.setFromCamera(G.ptr, G.camera);
+  const hit = G.ray.intersectObjects([...G.books, ...G.altarPick], false)[0];
+  if(!hit) return null;
+  return hit.object.userData.altar ? { type:"altar" } : { type:"book", i:hit.object.userData.book, mesh:hit.object };
+}
+function setHover(h, e){
+  const tip = $("booktip");
+  if(!G) return;
+  G.hover = h && h.type === "book" ? h.mesh : null;
+  $("room").classList.toggle("pointing", !!h);
+  if(h && h.type === "book" && e){
+    const b = LIB[h.i];
+    tip.innerHTML = `${esc(b.title)}<small>${esc(b.level)} · ${b.total} / ${b.max} คะแนน · แตะเพื่ออ่าน</small>`;
+    tip.style.display = "block";
+    tip.style.left = Math.min(innerWidth - 270, e.clientX + 14) + "px"; tip.style.top = (e.clientY + 16) + "px";
+  } else tip.style.display = "none";
+}
+function updateTurns(){
+  const one = WAL.cases <= 1;
+  $("turnL").hidden = $("turnR").hidden = one;
+  $("turnL").disabled = ROOM.target >= rotMax() - 1e-3;
+  $("turnR").disabled = ROOM.target <= rotMin() + 1e-3;
+  $("hint").textContent = one ? "อัปเกรดเพิ่มตู้หนังสือ แล้วจะหมุนดูรอบห้องได้" : "ลากซ้ายขวาเพื่อหมุนห้องสมุด";
+}
+function bindRoomInput(){
+  const el = G.renderer.domElement;
+  el.addEventListener("pointerdown", e => { ROOM.drag = { x:e.clientX, t0:ROOM.target, lx:e.clientX, t:performance.now(), v:0 }; ROOM.dragged = false; });
+  addEventListener("pointermove", e => {
+    const d = ROOM.drag;
+    if(d){
+      const dx = e.clientX - d.x;
+      if(!ROOM.dragged && Math.abs(dx) > 6){ ROOM.dragged = true; $("room").classList.add("dragging"); hideHint(); setHover(null); }
+      if(ROOM.dragged){
+        const now = performance.now(), lo = rotMin(), hi = rotMax();
+        let t = d.t0 + dx * 1.6 / innerWidth;
+        if(t > hi) t = hi + (t - hi) * .2;            /* a little give at the ends, then it springs back */
+        if(t < lo) t = lo + (t - lo) * .2;
+        ROOM.target = ROOM.theta = t;
+        d.v = (e.clientX - d.lx) / Math.max(1, now - d.t); d.lx = e.clientX; d.t = now;
+      }
+      return;
+    }
+    if(e.pointerType === "mouse" && !overlayOpen()) setHover(e.target === el ? pick(e) : null, e);
+  });
+  addEventListener("pointerup", e => {
+    const d = ROOM.drag; if(!d) return;
+    ROOM.drag = null; $("room").classList.remove("dragging");
+    if(ROOM.dragged){ ROOM.target = clampTheta(ROOM.theta + d.v * 220 * 1.6 / innerWidth); updateTurns(); return; }
+    if(e.target !== el || overlayOpen()) return;
+    const hit = pick(e);
+    if(hit && hit.type === "book"){ setHover(null); openBook(hit.i); }
+    else if(hit && hit.type === "altar") openModal();
+  });
+}
+function frame(){
+  const dt = Math.min(.05, G.clock.getDelta()), t = G.clock.elapsedTime;
+  if(document.body.classList.contains("reading")) return;
+  const ease = still() ? 1 : 1 - Math.pow(.0015, dt);
+  if(!(ROOM.drag && ROOM.dragged)) ROOM.theta += (ROOM.target - ROOM.theta) * ease;
+  const { camera } = G, th = ROOM.theta;
+  camera.position.set(Math.sin(th) * ROOM.camR, ROOM.camY, Math.cos(th) * ROOM.camR);
+  camera.lookAt(0, ROOM.camY + ROOM.slope * ROOM.camR, 0);
+  for(const c of ROOM.cases){
+    if(c.userData.rise < 1){ c.userData.rise = Math.min(1, c.userData.rise + dt / 1.4); const e = 1 - Math.pow(1 - c.userData.rise, 3); c.position.y = -(1 - e) * (CASE_H + .2); }
+  }
+  if(!still()){
+    G.magic.rotation.z += dt * .12;
+    const s = 1.5 + Math.sin(t * 1.6) * .08; G.halo.scale.set(s, s, 1);
+    const p = G.dust.geometry.attributes.position;
+    for(let i=0;i<p.count;i++){ let y = p.getY(i) + dt * .06; if(y > 4.3) y = 0; p.setY(i, y); }
+    p.needsUpdate = true;
+    for(const fn of G.anim) fn(t, dt);
+  }
+  for(const m of G.books){
+    const want = m === G.hover ? 1 : 0;
+    m.userData.out += (want - m.userData.out) * (still() ? 1 : 1 - Math.pow(.001, dt));
+    m.position.z = m.userData.z0 + m.userData.out * .12;
+    m.material[4].emissive.setRGB(.22 * m.userData.out, .18 * m.userData.out, .05 * m.userData.out);
+  }
+  G.renderer.render(G.scene, camera);
+  const v = G.bookAnchor.clone().project(camera);
+  const lab = $("altar");
+  lab.style.left = ((v.x + 1) / 2 * innerWidth) + "px";
+  lab.style.top = Math.min(innerHeight - 34, (1 - v.y) / 2 * innerHeight) + "px";
+  lab.style.visibility = v.z > 1 ? "hidden" : "";
+}
+function turnBy(dir){ const st = stepA(); ROOM.target = clampTheta(Math.round(ROOM.target / st) * st - dir * st); updateTurns(); }
+function focusShelfBook(i){
+  const st = stepA(), k = Math.floor(i / ROOM.perCase) % ROOM.slots, want = -k * st;
+  if(fullCircle()) ROOM.target += ((want - ROOM.target) % TAU + TAU * 1.5) % TAU - TAU / 2;
+  else ROOM.target = clampTheta(want);
+  updateTurns();
+}
+function hideHint(){ $("hint").classList.add("off"); }
+const overlayOpen = () => document.body.classList.contains("reading") || ["modal","lib","onboard","upg","set"].some(id => $(id).classList.contains("on"));
+
+/* ───── upgrades ───── */
+function renderWallet(){ $("lib-pts").textContent = points(); }
+function renderUpgrade(){
+  const pts = points(), cost = upgradeCost(), full = WAL.cases >= MAX_CASES, can = !full && pts >= cost;
+  $("upg-body").innerHTML = `<div class="card-head">${mascot(can ? "wow" : "calm", "")}<div><div class="kicker">อัปเกรดห้องสมุด</div><h2 id="upg-title">${P ? "ห้องสมุดของ " + esc(P.name) : "ห้องสมุดแห่งเรื่องราว"}</h2></div></div>
+    <div class="wallet"><b>⭐ ${pts}</b><span>คะแนนสะสม</span></div>
+    <div class="sumlist">
+      <div><b>ตอนนี้</b><span>ตู้หนังสือ ${WAL.cases} ตู้ · จุได้ ${capacity()} เล่ม · ใช้ไป ${LIB.length} เล่ม</span></div>
+      ${full ? `<div><b>อัปเกรดครบแล้ว</b><span>ตู้หนังสือครบรอบห้อง หมุนดูได้รอบทิศ</span></div>`
+             : `<div><b>อัปเกรดถัดไป</b><span>ตู้ที่ ${WAL.cases + 1} (+6 เล่ม) · หมุนห้องได้กว้างขึ้น · ${DECOR_NAMES[WAL.cases - 1]}</span></div>`}
+    </div>
+    ${!full && !can ? `<p class="note" style="margin-top:12px">ต้องใช้ ${cost} คะแนน ยังขาดอีก ${cost - pts} คะแนน เล่นเรื่องใหม่ หรือเปิดเล่มเดิมแล้วกดเล่นซ้ำเพื่อเก็บคะแนน</p>` : ""}
+    <div class="row end" style="margin-top:16px"><button class="btn" id="b-upgrade" ${can ? "" : "disabled"}>${full ? "อัปเกรดครบแล้ว" : `อัปเกรด · ใช้ ${cost} ⭐`}</button></div>`;
+}
+function openUpgrade(){ renderUpgrade(); $("upg").classList.add("on"); }
+function closeUpgrade(){ $("upg").classList.remove("on"); }
+function doUpgrade(){
+  if(WAL.cases >= MAX_CASES || points() < upgradeCost()) return;
+  WAL.spent += upgradeCost(); WAL.cases++; saveWallet();
+  closeUpgrade(); closeLibrary(); renderWallet();
+  if(G){
+    const g = makeCase(WAL.cases - 1); g.userData.rise = 0; g.position.y = -(CASE_H + .2);
+    ROOM.cases.push(g); buildDecor();
+  }
+  ROOM.target = clampTheta(-(WAL.cases - 1) * stepA()); updateTurns();
+  $("hint").classList.remove("off"); setTimeout(hideHint, 4000);
+  setTimeout(() => FX.burst(140), 500);
+  toast(`ได้ตู้หนังสือใหม่ และ${DECOR_NAMES[WAL.cases - 2]}`);
+}
+
+/* ───── Gemini: writes new stories and checks translations by meaning ─────
+   The key lives only in this browser's settings. A page served from claude.ai cannot reach Gemini;
+   open index.html from the computer (or from your own hosting) to use it. */
+const AI_DEFAULT_MODEL = "gemini-flash-lite-latest";   /* Flash-Lite answers fastest; the plain Flash models think first and are much slower */
+if(SET.model === "gemini-flash-latest") { SET.model = ""; saveSettings(); }
+const AI = {
+  has: () => !!(SET.apiKey && SET.apiKey.trim()),
+  model: () => (SET.model || AI_DEFAULT_MODEL).trim(),
+  url: (verb) => `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(AI.model())}:${verb}`,
+  body: (prompt, schema, temperature) => JSON.stringify({ contents:[{ role:"user", parts:[{ text:prompt }] }], generationConfig:{ temperature, maxOutputTokens:8192, responseMimeType:"application/json", responseSchema:schema } }),
+  async fail(r){ let m = "HTTP " + r.status; try{ const j = await r.json(); m = (j.error && j.error.message) || m; }catch(e){} const err = new Error(m); err.status = r.status; throw err; },
+  /* one answer, with a time limit */
+  async call(prompt, schema, temperature, ms = 30000){
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), ms);
+    try{
+      const r = await fetch(AI.url("generateContent"), { method:"POST", signal:ctl.signal, headers:{ "Content-Type":"application/json", "x-goog-api-key":SET.apiKey.trim() }, body:AI.body(prompt, schema, temperature) });
+      if(!r.ok) await AI.fail(r);
+      const j = await r.json();
+      return parseLoose(((j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || []).map(p => p.text || "").join(""));
+    } finally { clearTimeout(timer); }
+  },
+  /* streamed answer: onText gets everything written so far, so the page can show progress; gives up if nothing arrives for a while */
+  async stream(prompt, schema, temperature, onText, idleMs = 45000){
+    const ctl = new AbortController(); let timer = setTimeout(() => ctl.abort(), idleMs);
+    const poke = () => { clearTimeout(timer); timer = setTimeout(() => ctl.abort(), idleMs); };
+    try{
+      const r = await fetch(AI.url("streamGenerateContent") + "?alt=sse", { method:"POST", signal:ctl.signal, headers:{ "Content-Type":"application/json", "x-goog-api-key":SET.apiKey.trim() }, body:AI.body(prompt, schema, temperature) });
+      if(!r.ok) await AI.fail(r);
+      if(!r.body || !r.body.getReader){ const t = await r.text(); return parseLoose(sseText(t)); }
+      const reader = r.body.getReader(), dec = new TextDecoder();
+      let buf = "", text = "";
+      for(;;){
+        const { value, done } = await reader.read();
+        if(done) break;
+        poke();
+        buf += dec.decode(value, { stream:true });
+        let i;
+        while((i = buf.indexOf("\n")) >= 0){
+          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+          if(!line.startsWith("data:")) continue;
+          try{ const j = JSON.parse(line.slice(5)); text += ((j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || []).map(p => p.text || "").join(""); onText && onText(text); }catch(e){}
+        }
+      }
+      return parseLoose(text);
+    } finally { clearTimeout(timer); }
+  }
+};
+/* Gemini now and then sends JSON with a small slip (an extra comma, a code fence); tidy it before giving up */
+function parseLoose(t){
+  try{ return JSON.parse(t); }catch(e){}
+  let u = String(t).replace(/^\uFEFF/, "").replace(/```(?:json)?/g, "");
+  const a = u.indexOf("{"), b = u.lastIndexOf("}");
+  if(a >= 0 && b > a) u = u.slice(a, b + 1);
+  u = u.replace(/,(\s*[}\]])/g, "$1").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
+  return JSON.parse(u);
+}
+function sseText(t){
+  return t.split("\n").filter(l => l.startsWith("data:")).map(l => { try{ const j = JSON.parse(l.slice(5)); return ((j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || []).map(p => p.text || "").join(""); }catch(e){ return ""; } }).join("");
+}
+function aiErrorText(err){
+  const m = String(err && err.message || err);
+  if(err instanceof SyntaxError) return "Gemini ส่งเรื่องกลับมาในรูปแบบที่อ่านไม่ได้ 2 ครั้งติด ลองกดใหม่อีกครั้งนะ";
+  if(err && err.name === "AbortError") return "Gemini ตอบช้าเกินไปเลยหยุดรอ ลองกดใหม่อีกครั้ง หรือเปลี่ยนเป็นโมเดลที่เร็วกว่าในตั้งค่า";
+  if(err instanceof TypeError || /Failed to fetch|NetworkError|Load failed/i.test(m)){
+    if(navigator.onLine === false) return "ตอนนี้ไม่มีอินเทอร์เน็ต ต่อเน็ตแล้วลองใหม่นะ";
+    if(/claude\.ai|claudeusercontent/.test(location.hostname)) return "หน้านี้บน claude.ai เรียก Gemini ไม่ได้ ให้เปิดแอปจากลิงก์ของเราเองหรือไฟล์ index.html ในเครื่อง";
+    return "เชื่อมต่อ Gemini ไม่ได้ เช็กอินเทอร์เน็ตแล้วลองใหม่อีกครั้งนะ";
+  }
+  if(/API key not valid|API_KEY_INVALID|permission|403/i.test(m) || err.status === 400 && /key/i.test(m)) return "API key ไม่ถูกต้อง ลองคัดลอกมาวางใหม่ในหน้าตั้งค่า";
+  if(err.status === 429 || /quota|exhausted/i.test(m)) return "ใช้โควตาฟรีของ Gemini เต็มชั่วคราว รอสักครู่แล้วลองใหม่";
+  if(err.status === 404 || /not found/i.test(m)) return "ไม่พบโมเดลที่ตั้งไว้ ลองลบชื่อโมเดลในหน้าตั้งค่าให้ว่าง (จะใช้ gemini-flash-lite-latest)";
+  if(err.status >= 500) return "Gemini ไม่ว่างชั่วคราว ลองใหม่อีกครั้ง";
+  return "Gemini ตอบกลับผิดพลาด: " + m.slice(0, 120);
+}
+const STOP = new Set(["the","a","an","to","of","and","in","on","at","for","is","are","was","were","be","it","its"]);
+const STORY_SCHEMA = { type:"OBJECT", required:["title","genre","cast","moral","lines"], properties:{
+  title:{ type:"STRING" }, genre:{ type:"STRING" },
+  cast:{ type:"ARRAY", items:{ type:"OBJECT", required:["th","en","kind"], properties:{ th:{type:"STRING"}, en:{type:"STRING"}, kind:{type:"STRING", enum:["m","f","cat","dog","bird","rabbit","fish","fox","bear","other"]} } } },
+  moral:{ type:"OBJECT", required:["en","th"], properties:{ en:{type:"STRING"}, th:{type:"STRING"} } },
+  lines:{ type:"ARRAY", items:{ type:"OBJECT", required:["th","tense","refs","vocab","name","lesson"], properties:{
+    th:{type:"STRING"}, tense:{type:"STRING", enum:["อดีต","ปัจจุบัน","อนาคต"]}, tenseNote:{type:"STRING"},
+    refs:{ type:"ARRAY", items:{type:"STRING"} },
+    vocab:{ type:"ARRAY", items:{ type:"OBJECT", required:["th","en"], properties:{ th:{type:"STRING"}, en:{type:"STRING"} } } },
+    name:{type:"STRING"}, lesson:{ type:"ARRAY", items:{type:"STRING"} } } } }
+} };
+const GRADE_SCHEMA = { type:"OBJECT", required:["score","better","tip"], properties:{ score:{type:"NUMBER"}, better:{type:"STRING"}, tip:{type:"STRING"} } };
+const LEVEL_GUIDE = {
+  A1:"very short sentences, present simple, be/have, everyday words only",
+  A2:"short sentences, present simple and continuous, past simple, common irregular verbs, simple linking words",
+  B1:"present perfect, will/going to, first conditional, relative clauses with who/which, some phrasal verbs",
+  B2:"passive voice, second conditional, reported speech, modals of deduction, richer vocabulary",
+  C1:"mixed conditionals, inversion or cleft sentences now and then, idioms, nuanced vocabulary, longer sentences",
+  C2:"sophisticated, idiomatic, literary or journalistic style with precise nuance"
+};
+async function generateStory(level, onProgress){
+  const likes = P && P.likes && P.likes.length ? P.likes : ["ผจญภัย"];
+  const others = LIKES.map(l => l[1]).filter(t => !likes.includes(t));
+  const tag = Math.random() < .75 || !others.length ? likes[Math.floor(Math.random()*likes.length)] : others[Math.floor(Math.random()*others.length)];
+  const [lo, hi] = { A1:[5,6], A2:[5,7], B1:[6,8], B2:[6,8], C1:[7,9], C2:[7,9] }[level];
+  const n = lo + Math.floor(Math.random() * (hi - lo + 1));
+  const prepared = loadPrepared();
+  const used = LIB.slice(-15).map(b => b.title).concat(prepared ? [prepared.story.title] : []).join(", ") || "-";
+  const prompt = `You write short graded stories for a Thai learner who practises translating Thai into English.
+Learner: name ${P ? P.name : "-"}; is ${P ? whoText(P) : "-"}; good at ${P ? P.good.join(", ") : "-"}; likes ${likes.join(", ")}.
+Write ONE new story in the theme "${tag}" at CEFR ${level} (${LEVEL_GUIDE[level]}). It has exactly ${n} sentences.
+- The story is one continuous, fun, easy-to-follow plot with a beginning, a turn and an ending; every sentence follows from the one before. Use the learner's interests for flavour when it fits.
+- title: Thai, short and catchy, at most 14 Thai characters (2 to 4 words). Do not reuse these titles: ${used}.
+- genre: a short Thai label for the kind of text (เรื่องสั้น, การ์ตูน, เรื่องจริง, ข่าว, บทความ ...) that suits ${level}; higher levels may be ข่าว or บทความ.
+- cast: the 1 to 3 main characters. th = Thai name, en = English name, kind = m or f for people, or the animal kind (cat, dog, bird, rabbit, fish, fox, bear), or other.
+- For each sentence: th = natural, everyday Thai. refs = 3 to 5 correct English translations a ${level} learner could write, most natural first, same meaning, no extra details, each ending with punctuation. tense = the main tense of the English (อดีต, ปัจจุบัน or อนาคต); tenseNote = optional very short Thai note such as "ในคำพูดเป็นอนาคต" or "Present Perfect". vocab = 1 to 3 key words the learner may not know, th and en. name = the grammar point in a short Thai title (English terms allowed). lesson = exactly 2 short sentences of friendly, clear Thai explaining why the English is built this way, wrapping English words in <em></em>; no other HTML.
+- moral: the lesson of the story in one simple English sentence at ${level} (en) and its Thai translation (th).`;
+  let j;
+  try{ j = await AI.stream(prompt, STORY_SCHEMA, 1, text => onProgress && onProgress(Math.min(n, (text.match(/"refs"/g) || []).length), n)); }
+  catch(err){
+    if(!(err instanceof SyntaxError)) throw err;
+    /* the streamed story came back garbled: ask once more, in one piece */
+    onProgress && onProgress(0, n);
+    j = await AI.call(prompt, STORY_SCHEMA, .8, 60000);
+  }
+  const lines = (j.lines || []).filter(l => l && l.th && l.refs && l.refs.some(Boolean)).map(l => {
+    const vocab = (l.vocab || []).filter(v => v && v.th && v.en).slice(0, 3).map(v => [v.th.trim(), v.en.trim()]);
+    const vwords = [...new Set(vocab.flatMap(v => toks(v[1])).filter(w => w.length > 2 && !STOP.has(w)))];
+    return { th:l.th.trim(), tense:l.tense + (l.tenseNote ? " · " + l.tenseNote.trim() : ""), tkey:l.tense,
+             refs:l.refs.map(x => String(x).trim()).filter(Boolean).slice(0, 6), vocab, vwords, name:(l.name || "").trim(), lesson:(l.lesson || []).slice(0, 3) };
+  });
+  if(lines.length < 3) throw new Error("เรื่องที่ได้สั้นเกินไป");
+  return { id:"ai-" + Date.now(), ai:true, level, genre:(j.genre || "เรื่องสั้น").trim(), tags:[tag], title:(j.title || "เรื่องใหม่").trim().slice(0, 24),
+           hue:Math.floor(Math.random() * 360), cast:(j.cast || []).slice(0, 3).map(c => [c.th, c.en, c.kind === "other" ? "" : c.kind]),
+           moral:j.moral, lines };
+}
+async function gradeAI(line, text){
+  const prompt = `Thai sentence: ${line.th}
+Acceptable English translations: ${line.refs.join(" | ")}
+Learner level: CEFR ${STORY.level}
+Learner wrote: ${text.trim()}
+
+score: from 0 to 1, how well the learner's English carries the whole meaning of the Thai sentence with grammar that is correct for the level. Any natural wording with the same meaning is fully correct, even if it is not in the list. Give fair partial credit; tiny spelling slips cost little; missing or wrong meaning costs more.
+better: the learner's sentence corrected with as few changes as possible (exactly theirs if it is already correct).
+tip: one short, kind sentence in Thai naming the main thing to fix, or praising what they did well if it is correct.`;
+  const j = await AI.call(prompt, GRADE_SCHEMA, .2, 25000);
+  return { score:Math.max(0, Math.min(1, +j.score || 0)), better:String(j.better || "").trim(), tip:String(j.tip || "").trim() };
+}
+const safeLesson = p => esc(p).replace(/&lt;(\/?)em&gt;/g, "<$1em>");
+
+/* ───── the next story is written quietly in the background and kept for when the mystery book is opened ───── */
+const NKEY = "trans-taller.next";
+function loadPrepared(){ try{ const p = JSON.parse(localStorage.getItem(NKEY)); return p && p.story && p.story.lines ? p : null; }catch(e){ return null; } }
+function takePrepared(level){ const p = loadPrepared(); if(p && p.level === level){ try{ localStorage.removeItem(NKEY); }catch(e){} return p.story; } return null; }
+let preparing = null;
+function prepareNext(level){
+  if(!AI.has() || preparing || !P) return;
+  const have = loadPrepared(); if(have && have.level === level) return;
+  preparing = generateStory(level).then(story => { try{ localStorage.setItem(NKEY, JSON.stringify({ level, story })); }catch(e){} })
+    .catch(() => {}).finally(() => { preparing = null; });
+}
+
+/* ───── progress: the story being played is kept, so it can be finished later ───── */
+const CKEY = "trans-taller.current";
+function saveCur(){
+  if(MODE !== "play" || !STORY || S.idx >= STORY.lines.length) return;
+  try{ localStorage.setItem(CKEY, JSON.stringify({ story:STORY, S:{ idx:S.idx, phase:S.phase, text:S.text, clued:S.clued, vocabUsed:S.vocabUsed, results:S.results, level:S.level, replayOf:S.replayOf, storyId:S.storyId } })); }catch(e){}
+}
+function loadCur(){ try{ const c = JSON.parse(localStorage.getItem(CKEY)); return c && c.story && c.S ? c : null; }catch(e){ return null; } }
+function clearCur(){ try{ localStorage.removeItem(CKEY); }catch(e){} }
+function resumeCur(){
+  const c = loadCur(); if(!c) return;
+  closeModal(); MODE = "play"; RB = null; STORY = c.story;
+  Object.assign(S, c.S, { view:"open", justDone:-1, grading:false });
+  S.spread = S.idx + 1; S.cam = S.phase === "answered" ? "right" : "left";
+  paint(); goBook();
+}
+
+/* ───── settings dialog ───── */
+function renderSettings(){
+  const seg = (key, opts) => `<div class="seg">${opts.map(([v, t]) => `<button data-set="${key}" data-val="${v}" aria-pressed="${String(SET[key]) === String(v)}">${t}</button>`).join("")}</div>`;
+  $("set-body").innerHTML = `<div class="card-head">${mascot("happy","mini")}<div><div class="kicker">ตั้งค่า</div><h2 id="set-title">ปรับให้เหมาะกับเครื่อง</h2></div></div>
+    <div class="setrow"><b>เชื่อมต่อ Gemini (AI)</b><span>ใส่ API key แล้ว AI จะแต่งเรื่องใหม่ได้ทุกระดับ และตรวจคำแปลตามความหมาย key เก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น ไม่ได้อยู่ในไฟล์</span>
+      <input class="field" id="set-key" type="password" placeholder="วาง Gemini API key ที่นี่" value="${esc(SET.apiKey || "")}" autocomplete="off" spellcheck="false">
+      <div class="row"><button class="btn small" id="set-test">ทดสอบการเชื่อมต่อ</button><a class="fine" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">ขอ key ฟรีที่ Google AI Studio (aistudio.google.com/apikey)</a></div>
+      <p class="note" id="set-msg"></p>
+      <details><summary class="fine" style="cursor:pointer">ชื่อโมเดล (ไม่ต้องแก้ก็ได้)</summary><input class="field" id="set-model" value="${esc(SET.model || AI_DEFAULT_MODEL)}" spellcheck="false"><span class="fine">gemini-flash-lite-latest เร็วที่สุด · gemini-flash-latest เขียนเก่งกว่าแต่ช้ากว่ามาก</span></details></div>
+    <div class="setrow"><b>แอนิเมชันพลิกหน้าและเปิดหนังสือ</b><span>ปิดแล้วหน้าจะเปลี่ยนทันที ลื่นที่สุดบนมือถือ</span>${seg("bookAnim", [[true, "เปิด"], [false, "ปิด"]])}</div>
+    <div class="setrow"><b>ขนาดตัวอักษร</b><span>ใช้กับหน้าหนังสือและหน้าต่างต่าง ๆ</span>${seg("font", [[.8, "เล็กมาก"], [.88, "เล็ก"], [1, "ปกติ"], [1.12, "ใหญ่"]])}
+      <div class="preview"><div class="pv"><p class="thai" style="font-size:22px">คืนนี้ฝนตกหนักมาก</p><p class="en" style="font-size:19px;color:#14907d">It is raining very hard tonight.</p></div></div></div>
+    <div class="setrow"><b>ภาพห้องสมุด 3 มิติ</b><span>โหมดลื่นปิดเงา ลดแสงและฝุ่นทอง เหมาะกับมือถือ มีผลเมื่อโหลดหน้าใหม่</span>${seg("quality", [["pretty", "สวยที่สุด"], ["smooth", "ลื่นที่สุด"]])}
+      ${G && (SET.quality === "smooth") !== G.smoothBuilt ? `<button class="btn small" id="set-reload">โหลดหน้าใหม่ตอนนี้</button>` : ""}</div>
+`;
+}
+function openSettings(){ renderSettings(); $("set").classList.add("on"); }
+function closeSettings(){ $("set").classList.remove("on"); }
+$("gear-home").onclick = openSettings;
+$("gear-book").onclick = openSettings;
+$("set-close").onclick = closeSettings;
+$("set").addEventListener("click", e => {
+  if(e.target.id === "set"){ closeSettings(); return; }
+  if(e.target.id === "set-reload"){ location.reload(); return; }
+  const b = e.target.closest("[data-set]"); if(!b) return;
+  const key = b.dataset.set, raw = b.dataset.val;
+  SET[key] = raw === "true" ? true : raw === "false" ? false : isNaN(+raw) ? raw : +raw;
+  saveSettings(); applySettings(); renderSettings();
+  if(key === "font" && S.screen === "book") layout();
+});
+addEventListener("keydown", e => { if(e.key === "Escape" && $("set").classList.contains("on")) closeSettings(); });
+$("set").addEventListener("input", e => {
+  if(e.target.id === "set-key"){ SET.apiKey = e.target.value.trim(); saveSettings(); }
+  if(e.target.id === "set-model"){ SET.model = e.target.value.trim(); saveSettings(); }
+});
+$("set").addEventListener("click", async e => {
+  if(e.target.id !== "set-test") return;
+  const msg = $("set-msg");
+  if(!AI.has()){ msg.textContent = "ใส่ API key ก่อนนะ"; return; }
+  msg.textContent = "กำลังทดสอบ…";
+  const t0 = Date.now();
+  try{ const j = await AI.call('Reply with {"ok": true}', { type:"OBJECT", required:["ok"], properties:{ ok:{ type:"BOOLEAN" } } }, 0, 20000);
+       msg.textContent = j.ok ? `เชื่อมต่อสำเร็จ · โมเดล ${AI.model()} ตอบใน ${((Date.now() - t0) / 1000).toFixed(1)} วินาที ✦ กำลังเตรียมเรื่องแรกไว้ให้` : "เชื่อมต่อได้ แต่คำตอบแปลก ๆ ลองอีกครั้ง";
+       if(j.ok) prepareNext(S.level); }
+  catch(err){ msg.textContent = aiErrorText(err); }
+});
+applySettings();
+
+/* ───── boot ───── */
+$("altar").addEventListener("click", openModal);
+$("turnL").onclick = () => { hideHint(); turnBy(-1); };
+$("turnR").onclick = () => { hideHint(); turnBy(1); };
+$("allbooks").onclick = openLibrary;
+$("lib-upg").onclick = openUpgrade;
+$("upg-close").onclick = closeUpgrade;
+$("upg").addEventListener("click", e => { if(e.target.id === "upg") closeUpgrade(); if(e.target.id === "b-upgrade") doUpgrade(); });
+addEventListener("keydown", e => { if(e.key === "Escape" && $("upg").classList.contains("on")) closeUpgrade(); });
+renderWallet();
+$("levels").addEventListener("click", e => { const m = e.target.closest("[data-lv]"); if(!m || m.disabled) return; S.level = m.dataset.lv; renderModal(); });
+setTimeout(() => prepareNext(S.level), 3000);
+addEventListener("keydown", e => {
+  if(overlayOpen()) return;
+  if(e.key === "ArrowLeft"){ hideHint(); turnBy(-1); }
+  if(e.key === "ArrowRight"){ hideHint(); turnBy(1); }
+});
+setTimeout(hideHint, 7000);
+Promise.race([document.fonts ? document.fonts.ready : Promise.resolve(), new Promise(r => setTimeout(r, 2500))])
+  .then(() => Promise.race([Promise.all(["700 30px Mali","700 30px Fredoka"].map(f => document.fonts.load(f).catch(()=>{}))), new Promise(r => setTimeout(r, 2500))]))
+  .then(initRoom);
+function start(data){
+  if(data && data.screen) S = Object.assign(S, data);
+  STORY = STORIES.find(x => x.id === S.storyId) || STORIES[0];
+  paint();
+  if(S.screen === "book") goBook(); else goMeadow();
+  renderMe();
+  if(!P) openOnboard(false);
+  else if(S.modal) openModal();
+}
+/* ───── phone app: offline cache + ask the browser to keep saved progress ───── */
+if("serviceWorker" in navigator && /^https?:$/.test(location.protocol) && !/claudeusercontent|claude\.ai/.test(location.hostname)){
+  addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
+try{ navigator.storage?.persist?.(); }catch(e){}
+window.claude?.hot?.snapshot?.(() => S);
+window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+</script>
+</body>
+</html>
